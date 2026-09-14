@@ -117,13 +117,39 @@ def test_search_service_centers_success(mock_post):
     assert centers[0]["distance_km"] < centers[1]["distance_km"]
 
 
+@patch("tools.location.requests.get")
 @patch("tools.location.requests.post")
-def test_search_service_centers_api_failure(mock_post):
-    """Verify Overpass API failure returns empty list without crashing."""
+def test_search_service_centers_api_failure(mock_post, mock_get):
+    """Verify Overpass API failure returns empty list without crashing when fallbacks fail."""
     mock_post.side_effect = requests.exceptions.RequestException("Overpass 504 Gateway Timeout")
+    mock_get.side_effect = requests.exceptions.RequestException("Nominatim network timeout")
 
-    centers = search_service_centers(12.9716, 77.5946, radius_km=5)
+    centers = search_service_centers(12.9716, 77.5946, radius_km=5, fallback_database=False)
     assert centers == []
+
+
+@patch("tools.location.requests.get")
+@patch("tools.location.requests.post")
+def test_search_service_centers_live_nominatim_fallback(mock_post, mock_get):
+    """Verify live Nominatim search fallback when Overpass times out."""
+    mock_post.side_effect = requests.exceptions.Timeout("Overpass timeout")
+    mock_resp = MagicMock()
+    mock_resp.status_code = 200
+    mock_resp.json.return_value = [
+        {
+            "osm_type": "node",
+            "osm_id": 12402760709,
+            "name": "Tata Motor",
+            "lat": "24.5549",
+            "lon": "73.6921",
+            "display_name": "Tata Motor, NH 8, Udaipur, Rajasthan"
+        }
+    ]
+    mock_get.return_value = mock_resp
+
+    centers = search_service_centers(24.5787, 73.6862, radius_km=30)
+    assert len(centers) >= 1
+    assert any("Tata" in c["name"] for c in centers)
 
 
 def test_search_service_centers_invalid_coords():

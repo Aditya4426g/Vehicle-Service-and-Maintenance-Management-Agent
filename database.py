@@ -86,7 +86,8 @@ _LOCAL_SERVICE_CENTERS: Dict[str, Dict[str, Any]] = {
         "address": "12th Main Road, Indiranagar, Bangalore",
         "latitude": 12.9716,
         "longitude": 77.5946,
-        "phone": "+91 80 25251122"
+        "phone": "+91 80 25251122",
+        "rating": 4.8
     },
     "osm_102": {
         "id": 2,
@@ -95,7 +96,8 @@ _LOCAL_SERVICE_CENTERS: Dict[str, Dict[str, Any]] = {
         "address": "80 Feet Road, Koramangala, Bangalore",
         "latitude": 12.9352,
         "longitude": 77.6245,
-        "phone": "+91 80 41412233"
+        "phone": "+91 80 41412233",
+        "rating": 4.7
     },
     "osm_103": {
         "id": 3,
@@ -104,7 +106,48 @@ _LOCAL_SERVICE_CENTERS: Dict[str, Dict[str, Any]] = {
         "address": "Hosur Main Road, Kudlu Gate, Bangalore",
         "latitude": 12.8912,
         "longitude": 77.6411,
-        "phone": "+91 80 67673344"
+        "phone": "+91 80 67673344",
+        "rating": 4.6
+    },
+    "osm_udaipur_101": {
+        "id": 4,
+        "center_id": "osm_udaipur_101",
+        "name": "Tata Motors Authorized Service - National Motors",
+        "address": "NH 8, Near Pratap Nagar Chauraha, Transport Nagar, Udaipur, Rajasthan 313001",
+        "latitude": 24.5550,
+        "longitude": 73.6922,
+        "phone": "+91 294 2490111",
+        "rating": 4.8
+    },
+    "osm_udaipur_102": {
+        "id": 5,
+        "center_id": "osm_udaipur_102",
+        "name": "Tata Motors Passenger Car Service - Mewar Motors",
+        "address": "Madri Industrial Area, Road No. 3, Udaipur, Rajasthan 313003",
+        "latitude": 24.5710,
+        "longitude": 73.7380,
+        "phone": "+91 294 2492345",
+        "rating": 4.6
+    },
+    "osm_udaipur_103": {
+        "id": 6,
+        "center_id": "osm_udaipur_103",
+        "name": "Tata Authorized Service Hub - City Center",
+        "address": "Goverdhan Vilas, Sector 14, Udaipur, Rajasthan 313002",
+        "latitude": 24.5420,
+        "longitude": 73.6950,
+        "phone": "+91 294 2487890",
+        "rating": 4.5
+    },
+    "osm_jaipur_101": {
+        "id": 7,
+        "center_id": "osm_jaipur_101",
+        "name": "Tata Motors Authorized Service - Roshan Motors",
+        "address": "Tonk Road, Jaipur, Rajasthan 302015",
+        "latitude": 26.8500,
+        "longitude": 75.8000,
+        "phone": "+91 141 2701122",
+        "rating": 4.7
     }
 }
 
@@ -210,6 +253,49 @@ def get_maintenance_schedule(vehicle_id: int) -> Optional[Dict[str, Any]]:
             print(f"Supabase error in get_maintenance_schedule: {e}")
 
     return _LOCAL_MAINTENANCE_SCHEDULES.get(vehicle_id)
+
+
+def get_service_centers() -> List[Dict[str, Any]]:
+    """Retrieve all authorized service centers."""
+    if _supabase_client:
+        try:
+            res = _supabase_client.table("service_centers").select("*").execute()
+            if res.data:
+                return res.data
+        except Exception as e:
+            print(f"Supabase error in get_service_centers: {e}")
+    return list(_LOCAL_SERVICE_CENTERS.values())
+
+
+def get_service_centers_near(latitude: float, longitude: float, radius_km: float = 30.0) -> List[Dict[str, Any]]:
+    """Retrieve service centers sorted by Haversine distance from coordinates."""
+    import math
+
+    def _calc_dist(lat1, lon1, lat2, lon2):
+        R = 6371.0
+        dlat = math.radians(lat2 - lat1)
+        dlon = math.radians(lon2 - lon1)
+        a = (
+            math.sin(dlat / 2.0) ** 2
+            + math.cos(math.radians(lat1)) * math.cos(math.radians(lat2)) * math.sin(dlon / 2.0) ** 2
+        )
+        c = 2.0 * math.atan2(math.sqrt(a), math.sqrt(1.0 - a))
+        return round(R * c, 2)
+
+    centers = get_service_centers()
+    matched = []
+    for c in centers:
+        c_lat = c.get("latitude")
+        c_lon = c.get("longitude")
+        if c_lat is not None and c_lon is not None:
+            dist = _calc_dist(latitude, longitude, float(c_lat), float(c_lon))
+            if dist <= radius_km:
+                item = dict(c)
+                item["distance_km"] = dist
+                matched.append(item)
+
+    matched.sort(key=lambda x: x["distance_km"])
+    return matched
 
 
 def get_appointments(vehicle_id: Optional[int] = None) -> List[Dict[str, Any]]:

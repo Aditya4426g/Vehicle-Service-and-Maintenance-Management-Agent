@@ -76,11 +76,13 @@ def test_scenario_5_empty_geocoding_results(mock_get):
     assert "No coordinates found" in res["error"]
 
 
+@patch("tools.location.requests.get")
 @patch("tools.location.requests.post")
-def test_scenario_6_overpass_api_failure(mock_post):
-    """Verify Overpass API failure returns empty list without crashing."""
+def test_scenario_6_overpass_api_failure(mock_post, mock_get):
+    """Verify Overpass API failure returns empty list without crashing when fallbacks fail."""
     mock_post.side_effect = requests.exceptions.ConnectionError("Failed to resolve overpass-api.de")
-    centers = search_service_centers(12.9716, 77.5946, radius_km=10)
+    mock_get.side_effect = requests.exceptions.ConnectionError("Failed to reach Nominatim")
+    centers = search_service_centers(12.9716, 77.5946, radius_km=10, fallback_database=False)
     assert isinstance(centers, list)
     assert len(centers) == 0
 
