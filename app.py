@@ -130,23 +130,51 @@ if "messages" not in st.session_state:
         }
     ]
 
-# Fetch baseline vehicle data for Rahul (Vehicle ID 1)
-vehicle = database.get_vehicle_info(user_id=1, vehicle_name="Tata Nexon") or {
-    "make": "Tata",
-    "model": "Nexon",
-    "variant": "XZ+ Petrol",
-    "year": 2023,
-    "registration_number": "KA-01-MJ-2023",
-    "current_mileage": 9800,
-    "last_service_date": "2024-03-15",
-    "last_service_mileage": 5000
+# Multi-Vehicle Support
+user_vehicles = database.get_user_vehicles(user_id=1)
+if not user_vehicles:
+    user_vehicles = [
+        database.get_vehicle_info(user_id=1) or {
+            "id": 1,
+            "label": "Vehicle A",
+            "make": "Tata",
+            "model": "Nexon",
+            "variant": "XZ+ Petrol",
+            "year": 2023,
+            "registration_number": "KA-01-MJ-2023",
+            "current_mileage": 9800,
+            "last_service_date": "2024-03-15",
+            "last_service_mileage": 5000
+        }
+    ]
+
+# Multi-Vehicle Selection Options
+vehicle_map = {
+    f"{v.get('label', f'Vehicle {idx+1}')}: {v['make']} {v['model']} ({v['registration_number']})": v["id"]
+    for idx, v in enumerate(user_vehicles)
 }
+
+if "selected_vehicle_id" not in st.session_state:
+    st.session_state.selected_vehicle_id = user_vehicles[0]["id"]
 
 # Sidebar - Vehicle Telemetry & System Status
 with st.sidebar:
     st.title("🚗 Vehicle Profile")
-    st.subheader(f"{vehicle['make']} {vehicle['model']}")
-    st.caption(f"Reg: `{vehicle['registration_number']}` | Year: {vehicle['year']} | {vehicle.get('variant', 'XZ+ Petrol')}")
+
+    current_vid = st.session_state.selected_vehicle_id
+    current_idx = next((i for i, (lbl, vid) in enumerate(vehicle_map.items()) if vid == current_vid), 0)
+
+    selected_label = st.selectbox(
+        "🚘 Active Vehicle:",
+        options=list(vehicle_map.keys()),
+        index=current_idx,
+        help="Switch active vehicle to monitor telemetry, maintenance status, and history."
+    )
+    st.session_state.selected_vehicle_id = vehicle_map[selected_label]
+    vehicle = next((v for v in user_vehicles if v["id"] == st.session_state.selected_vehicle_id), user_vehicles[0])
+
+    st.subheader(f"{vehicle.get('label', '')} — {vehicle['make']} {vehicle['model']}")
+    st.caption(f"Reg: `{vehicle['registration_number']}` | Year: {vehicle['year']} | {vehicle.get('variant', 'Standard')}")
 
     col_sb1, col_sb2 = st.columns(2)
     with col_sb1:
@@ -155,7 +183,7 @@ with st.sidebar:
         st.metric("Last Svc", f"{vehicle['last_service_mileage']:,} km")
 
     # Maintenance Calculation
-    sched = database.get_maintenance_schedule(1) or {"interval_km": 5000, "interval_months": 6}
+    sched = database.get_maintenance_schedule(vehicle["id"]) or {"interval_km": 5000, "interval_months": 6}
     status_calc = calculate_service_status(
         current_mileage=vehicle["current_mileage"],
         last_service_mileage=vehicle["last_service_mileage"],
@@ -175,7 +203,7 @@ with st.sidebar:
     st.progress(pct, text=f"Service Interval Consumed: {int(pct * 100)}%")
 
     if status_code == "APPROACHING":
-        st.warning(f"⚠️ **Service Approaching**\n\n{status_calc['remaining_km']} km remaining before 10,000 km minor service.")
+        st.warning(f"⚠️ **Service Approaching**\n\n{status_calc['remaining_km']} km remaining before service milestone.")
     elif status_code == "DUE":
         st.error("🚨 **Service Due Today**\n\nVehicle reached scheduled service milestone.")
     elif status_code == "OVERDUE":
@@ -186,10 +214,10 @@ with st.sidebar:
     st.markdown("---")
     st.markdown("### Quick Prompts")
     quick_prompts = [
-        "Is my Tata Nexon service due?",
+        f"Is my {vehicle['model']} service due?",
+        "Show details of Vehicle B",
         "Show my service history",
-        "Find service centers near Udaipur, Rajasthan",
-        "Find service centers near Indiranagar, Bangalore",
+        "Find service centers near Udaipur",
         "Book an appointment for tomorrow morning"
     ]
     for prompt in quick_prompts:
@@ -203,7 +231,7 @@ with st.sidebar:
 
 # Main Application Header
 st.markdown('<div class="main-title">🚗 AutoCare AI</div>', unsafe_allow_html=True)
-st.markdown('<div class="sub-title">Intelligent Service & Maintenance Assistant for Tata Nexon</div>', unsafe_allow_html=True)
+st.markdown(f'<div class="sub-title">Active Vehicle: <b>{vehicle.get("label", "Vehicle")}: {vehicle["make"]} {vehicle["model"]}</b> ({vehicle["registration_number"]})</div>', unsafe_allow_html=True)
 
 # 3 Core Tabs (Chat Assistant, Vehicle Details, Appointments)
 tab_chat, tab_dashboard, tab_appointments = st.tabs([
@@ -222,7 +250,7 @@ with tab_chat:
 
 # TAB 2: Vehicle Telemetry & Service History
 with tab_dashboard:
-    st.markdown("##### Vehicle Specifications & Health")
+    st.markdown(f"##### {vehicle.get('label', 'Active Vehicle')} Specifications & Health")
     c1, c2, c3, c4 = st.columns(4)
     c1.metric("Make & Model", f"{vehicle['make']} {vehicle['model']}")
     c2.metric("Variant", vehicle.get("variant", "XZ+ Petrol"))
@@ -231,7 +259,7 @@ with tab_dashboard:
 
     st.markdown("---")
     st.markdown("##### Historical Service Records")
-    history_records = database.get_service_history(1)
+    history_records = database.get_service_history(vehicle["id"])
     if history_records:
         st.dataframe(
             history_records,
@@ -248,12 +276,35 @@ with tab_dashboard:
             use_container_width=True
         )
     else:
-        st.info("No past service records on file.")
+        st.info(f"No past service records on file for {vehicle['make']} {vehicle['model']}.")
+
+    st.markdown("---")
+    st.markdown("##### Garage Overview — All Registered Vehicles")
+    garage_cols = st.columns(len(user_vehicles))
+    for idx, v in enumerate(user_vehicles):
+        with garage_cols[idx]:
+            is_active = (v["id"] == vehicle["id"])
+            border_style = "border: 2px solid #2563EB;" if is_active else "border: 1px solid #E2E8F0;"
+            badge_html = "<span style='float:right;' class='badge-status-ok'>ACTIVE</span>" if is_active else ""
+            st.markdown(f"""
+            <div class="metric-card" style="{border_style}">
+                <b>{v.get('label', f'Vehicle {idx+1}')}: {v['make']} {v['model']}</b> {badge_html}<br>
+                <span style="color: #64748B; font-size: 0.85rem;">
+                    Variant: {v.get('variant', 'Standard')}<br>
+                    Reg: <code>{v['registration_number']}</code><br>
+                    Odometer: <b>{v['current_mileage']:,} km</b> | Last Svc: {v['last_service_mileage']:,} km
+                </span>
+            </div>
+            """, unsafe_allow_html=True)
+            if not is_active:
+                if st.button(f"Select {v.get('label', v['model'])}", key=f"switch_v_{v['id']}", use_container_width=True):
+                    st.session_state.selected_vehicle_id = v["id"]
+                    st.rerun()
 
 # TAB 3: Appointments
 with tab_appointments:
     st.markdown("##### Scheduled Appointments")
-    appts = database.get_appointments(vehicle_id=1)
+    appts = database.get_appointments(vehicle_id=vehicle["id"])
     if appts:
         for appt in appts:
             with st.container():

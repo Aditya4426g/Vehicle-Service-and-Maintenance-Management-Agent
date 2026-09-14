@@ -18,6 +18,8 @@ from tools.notification import send_notification, format_confirmation_message
 # System prompt giving strict instructions to GPT-OSS 120B
 SYSTEM_PROMPT = """You are the Vehicle Service & Maintenance Management Agent.
 You assist vehicle owners with maintenance status checks, finding service centers, and booking appointments.
+The user may own multiple vehicles (e.g. Vehicle A: Tata Nexon, Vehicle B: Tata Punch).
+When asked about a specific vehicle (such as 'Vehicle B', 'vechile b', 'second car', 'Tata Punch', 'Vehicle A', 'Tata Nexon', etc.) or all vehicles, call get_vehicle_info with that vehicle name/label to fetch its accurate specifications and maintenance records.
 
 CRITICAL RULES:
 1. Never perform arithmetic or maintenance calculations yourself. Always call calculate_service_status.
@@ -36,12 +38,12 @@ TOOL_SCHEMAS = [
         "type": "function",
         "function": {
             "name": "get_vehicle_info",
-            "description": "Retrieve vehicle information by user_id and optional vehicle name/model.",
+            "description": "Retrieve vehicle information by user_id and optional vehicle name, model, or label (e.g. 'Tata Nexon', 'Vehicle A', 'Vehicle B', 'Tata Punch').",
             "parameters": {
                 "type": "object",
                 "properties": {
                     "user_id": {"type": "integer", "description": "The user ID (default 1)"},
-                    "vehicle_name": {"type": "string", "description": "Optional make or model (e.g. 'Tata Nexon')"}
+                    "vehicle_name": {"type": "string", "description": "Optional make, model, or label (e.g. 'Tata Nexon', 'Vehicle A', 'Vehicle B', 'Tata Punch', 'second car')"}
                 },
                 "required": ["user_id"]
             }
@@ -184,7 +186,14 @@ def execute_tool(name: str, arguments: Dict[str, Any]) -> Dict[str, Any]:
                 user_id=arguments.get("user_id", 1),
                 vehicle_name=arguments.get("vehicle_name")
             )
-            return {"vehicle": res} if res else {"error": "Vehicle not found"}
+            all_v = database.get_user_vehicles(user_id=arguments.get("user_id", 1))
+            summary_list = [
+                {"id": v["id"], "label": v.get("label", f"Vehicle {v['id']}"), "make": v["make"], "model": v["model"], "registration": v["registration_number"]}
+                for v in all_v
+            ]
+            if res:
+                return {"vehicle": res, "user_vehicles": summary_list}
+            return {"error": "Vehicle not found", "available_vehicles": summary_list}
 
         elif name == "get_service_history":
             res = database.get_service_history(vehicle_id=arguments.get("vehicle_id", 1))

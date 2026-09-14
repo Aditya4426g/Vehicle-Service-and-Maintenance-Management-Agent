@@ -7,6 +7,7 @@ from database import (
     get_user,
     get_vehicle_info,
     get_vehicle_by_name,
+    get_user_vehicles,
     get_service_history,
     get_maintenance_schedule,
     get_appointments,
@@ -25,6 +26,15 @@ def test_get_user():
     assert user["email"] == "rahul@example.com"
 
 
+def test_get_user_vehicles():
+    """Verify retrieval of all vehicles for user."""
+    vehicles = get_user_vehicles(1)
+    assert len(vehicles) >= 2
+    models = [v["model"] for v in vehicles]
+    assert "Nexon" in models
+    assert "Punch" in models
+
+
 def test_get_vehicle_info():
     """Verify vehicle details retrieval for Tata Nexon."""
     vehicle = get_vehicle_info(1)
@@ -33,6 +43,25 @@ def test_get_vehicle_info():
     assert vehicle["model"] == "Nexon"
     assert vehicle["current_mileage"] == 9800
     assert vehicle["last_service_mileage"] == 5000
+
+
+def test_get_vehicle_b_details():
+    """Verify Vehicle B lookup by various aliases including typo 'vechile b'."""
+    vb1 = get_vehicle_info(1, "vehicle b")
+    assert vb1 is not None
+    assert vb1["model"] == "Punch"
+
+    vb2 = get_vehicle_info(1, "vechile b")
+    assert vb2 is not None
+    assert vb2["model"] == "Punch"
+
+    vb3 = get_vehicle_info(1, "Tata Punch")
+    assert vb3 is not None
+    assert vb3["model"] == "Punch"
+
+    vb4 = get_vehicle_info(1, "second car")
+    assert vb4 is not None
+    assert vb4["model"] == "Punch"
 
 
 def test_get_vehicle_by_name():

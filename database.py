@@ -32,6 +32,7 @@ _LOCAL_VEHICLES: Dict[int, Dict[str, Any]] = {
     1: {
         "id": 1,
         "user_id": 1,
+        "label": "Vehicle A",
         "make": "Tata",
         "model": "Nexon",
         "variant": "XZ+ Petrol",
@@ -40,6 +41,19 @@ _LOCAL_VEHICLES: Dict[int, Dict[str, Any]] = {
         "current_mileage": 9800,
         "last_service_date": "2024-03-15",
         "last_service_mileage": 5000
+    },
+    2: {
+        "id": 2,
+        "user_id": 1,
+        "label": "Vehicle B",
+        "make": "Tata",
+        "model": "Punch",
+        "variant": "Creative Dual Tone AMT",
+        "year": 2024,
+        "registration_number": "KA-05-NB-5678",
+        "current_mileage": 4200,
+        "last_service_date": "2024-06-10",
+        "last_service_mileage": 1000
     }
 }
 
@@ -63,6 +77,16 @@ _LOCAL_SERVICE_HISTORY: List[Dict[str, Any]] = [
         "description": "Engine oil change, oil filter replacement, brake inspection",
         "cost": 2850.0,
         "service_center": "XYZ Auto Care Service Center"
+    },
+    {
+        "id": 3,
+        "vehicle_id": 2,
+        "service_date": "2024-06-10",
+        "service_mileage": 1000,
+        "service_type": "1st Free Inspection",
+        "description": "1,000 km initial inspection, wheel alignment, wash",
+        "cost": 0.0,
+        "service_center": "ABC Motors Tata Authorized"
     }
 ]
 
@@ -75,6 +99,15 @@ _LOCAL_MAINTENANCE_SCHEDULES: Dict[int, Dict[str, Any]] = {
         "interval_months": 6,
         "last_service_mileage": 5000,
         "last_service_date": "2024-03-15"
+    },
+    2: {
+        "id": 2,
+        "vehicle_id": 2,
+        "service_type": "Periodic Maintenance Service",
+        "interval_km": 5000,
+        "interval_months": 6,
+        "last_service_mileage": 1000,
+        "last_service_date": "2024-06-10"
     }
 }
 
@@ -251,36 +284,55 @@ def get_user(user_id: int = 1) -> Optional[Dict[str, Any]]:
     return _LOCAL_USERS.get(user_id)
 
 
-def get_vehicle_info(user_id: int = 1, vehicle_name: Optional[str] = None) -> Optional[Dict[str, Any]]:
-    """
-    Retrieve vehicle details matching user_id and optional vehicle name.
-    Returns: {id, make, model, current_mileage, last_service_date, last_service_mileage, ...}
-    """
+def get_user_vehicles(user_id: int = 1) -> List[Dict[str, Any]]:
+    """Retrieve all vehicles owned by user_id."""
     if _supabase_client:
         try:
-            query = _supabase_client.table("vehicles").select("*").eq("user_id", user_id)
-            res = query.execute()
+            res = _supabase_client.table("vehicles").select("*").eq("user_id", user_id).order("id").execute()
             if res.data:
-                if vehicle_name:
-                    vname = vehicle_name.lower().strip()
-                    for v in res.data:
-                        full_name = f"{v.get('make', '')} {v.get('model', '')}".lower()
-                        if vname in full_name or v.get('model', '').lower() in vname:
-                            return v
-                return res.data[0]
+                return res.data
         except Exception as e:
-            print(f"Supabase error in get_vehicle_info: {e}")
+            print(f"Supabase error in get_user_vehicles: {e}")
+    return [v for v in _LOCAL_VEHICLES.values() if v["user_id"] == user_id]
 
-    # Local fallback search
-    for v in _LOCAL_VEHICLES.values():
-        if v["user_id"] == user_id:
-            if vehicle_name:
-                vname = vehicle_name.lower().strip()
-                full_name = f"{v['make']} {v['model']}".lower()
-                if vname in full_name or v["model"].lower() in vname:
-                    return v
-            else:
+
+def get_vehicle_info(user_id: int = 1, vehicle_name: Optional[str] = None) -> Optional[Dict[str, Any]]:
+    """
+    Retrieve vehicle details matching user_id and optional vehicle name/label/alias.
+    Supports 'Vehicle A', 'Vehicle B', 'Tata Nexon', 'Tata Punch', 'second car', 'vechile b', etc.
+    Returns: {id, make, model, current_mileage, last_service_date, last_service_mileage, ...}
+    """
+    vehicles = get_user_vehicles(user_id=user_id)
+    if not vehicles:
+        return None
+
+    if not vehicle_name:
+        return vehicles[0]
+
+    vname = vehicle_name.lower().strip()
+
+    # Check for Vehicle B / 2nd vehicle aliases (including common typo 'vechile b')
+    if any(alias in vname for alias in ["vehicle b", "vechile b", "car b", "vehicle 2", "car 2", "second vehicle", "second car", "2nd vehicle", "punch"]):
+        for v in vehicles:
+            if v.get("label", "").lower() == "vehicle b" or v["id"] == 2 or "punch" in v.get("model", "").lower():
                 return v
+
+    # Check for Vehicle A / 1st vehicle aliases
+    if any(alias in vname for alias in ["vehicle a", "vechile a", "car a", "vehicle 1", "car 1", "first vehicle", "first car", "1st vehicle", "nexon"]):
+        for v in vehicles:
+            if v.get("label", "").lower() == "vehicle a" or v["id"] == 1 or "nexon" in v.get("model", "").lower():
+                return v
+
+    # General search across make, model, variant, label, registration
+    for v in vehicles:
+        full_name = f"{v.get('make', '')} {v.get('model', '')}".lower()
+        model = v.get("model", "").lower()
+        label = v.get("label", "").lower()
+        reg = v.get("registration_number", "").lower()
+        if (vname in full_name or model in vname or vname in model or 
+            (label and (vname == label or label in vname)) or vname in reg):
+            return v
+
     return None
 
 
