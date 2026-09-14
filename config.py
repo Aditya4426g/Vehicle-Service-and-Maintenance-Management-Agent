@@ -20,6 +20,9 @@ SUPABASE_KEY = os.getenv("SUPABASE_KEY", "")
 # OpenStreetMap Nominatim configuration
 NOMINATIM_USER_AGENT = os.getenv("NOMINATIM_USER_AGENT", "vehicle_maintenance_agent_v1")
 
+# Optional Google Maps / Places API configuration (if provided, enables live Google Places lookup)
+GOOGLE_MAPS_API_KEY = os.getenv("GOOGLE_MAPS_API_KEY", "") or os.getenv("GOOGLE_PLACES_API_KEY", "")
+
 # Maintenance interval thresholds (in km and days)
 APPROACHING_THRESHOLD_KM = 500
 APPROACHING_THRESHOLD_DAYS = 30

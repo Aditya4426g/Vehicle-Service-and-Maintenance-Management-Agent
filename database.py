@@ -143,11 +143,71 @@ _LOCAL_SERVICE_CENTERS: Dict[str, Dict[str, Any]] = {
         "id": 7,
         "center_id": "osm_jaipur_101",
         "name": "Tata Motors Authorized Service - Roshan Motors",
-        "address": "Tonk Road, Jaipur, Rajasthan 302015",
+        "address": "Tonk Road, Near Glass Factory, Jaipur, Rajasthan 302015",
         "latitude": 26.8500,
         "longitude": 75.8000,
         "phone": "+91 141 2701122",
         "rating": 4.7
+    },
+    "osm_jodhpur_101": {
+        "id": 8,
+        "center_id": "osm_jodhpur_101",
+        "name": "Tata Motors Authorized Service - Marwar Motors",
+        "address": "Pal Road, Heavy Industrial Area, Jodhpur, Rajasthan 342003",
+        "latitude": 26.2600,
+        "longitude": 73.0100,
+        "phone": "+91 291 2741122",
+        "rating": 4.6
+    },
+    "osm_delhi_101": {
+        "id": 9,
+        "center_id": "osm_delhi_101",
+        "name": "Tata Motors Authorized Service - SAB Motors",
+        "address": "B-1/E-23, Mathura Road, Mohan Cooperative Industrial Estate, New Delhi 110044",
+        "latitude": 28.5200,
+        "longitude": 77.2900,
+        "phone": "+91 11 41671122",
+        "rating": 4.8
+    },
+    "osm_gurgaon_101": {
+        "id": 10,
+        "center_id": "osm_gurgaon_101",
+        "name": "Tata Motors Authorized Workshop - Arya Motors",
+        "address": "Sector 14, Old Delhi Gurgaon Road, Gurugram, Haryana 122001",
+        "latitude": 28.4700,
+        "longitude": 77.0500,
+        "phone": "+91 124 4561122",
+        "rating": 4.7
+    },
+    "osm_mumbai_101": {
+        "id": 11,
+        "center_id": "osm_mumbai_101",
+        "name": "Tata Motors Authorized Service - Wasan Motors",
+        "address": "Swastik Park, Sion Trombay Road, Chembur, Mumbai, Maharashtra 400071",
+        "latitude": 19.0550,
+        "longitude": 72.8900,
+        "phone": "+91 22 25221122",
+        "rating": 4.7
+    },
+    "osm_pune_101": {
+        "id": 12,
+        "center_id": "osm_pune_101",
+        "name": "Tata Motors Passenger Car Service - Concorde Motors",
+        "address": "Wakdewadi, Shivajinagar, Pune, Maharashtra 411003",
+        "latitude": 18.5400,
+        "longitude": 73.8450,
+        "phone": "+91 20 66011122",
+        "rating": 4.7
+    },
+    "osm_ahmedabad_101": {
+        "id": 13,
+        "center_id": "osm_ahmedabad_101",
+        "name": "Tata Motors Authorized Service - Cargo Motors",
+        "address": "Near YMCA Club, S.G. Highway, Makarba, Ahmedabad, Gujarat 380051",
+        "latitude": 23.0100,
+        "longitude": 72.5000,
+        "phone": "+91 79 40011122",
+        "rating": 4.8
     }
 }
 
