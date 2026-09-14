@@ -27,6 +27,7 @@ CRITICAL RULES:
 5. NEVER claim that an appointment is booked unless book_appointment returns status: SUCCESS.
 6. When booking succeeds, use send_notification with the returned appointment_id.
 7. Be polite, concise, and structured in your final response.
+8. ALWAYS present the service centers returned by search_service_centers. If they are beyond the requested radius, inform the user that these are the closest authorized service centers nearby, displaying their name, address, distance, rating, and contact details.
 """
 
 # JSON Schemas for all 9 deterministic tools

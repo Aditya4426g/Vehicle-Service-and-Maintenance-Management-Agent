@@ -349,13 +349,17 @@ def get_service_centers_near(latitude: float, longitude: float, radius_km: float
         c_lon = c.get("longitude")
         if c_lat is not None and c_lon is not None:
             dist = _calc_dist(latitude, longitude, float(c_lat), float(c_lon))
-            if dist <= radius_km:
-                item = dict(c)
-                item["distance_km"] = dist
-                matched.append(item)
+            item = dict(c)
+            item["distance_km"] = dist
+            matched.append(item)
 
     matched.sort(key=lambda x: x["distance_km"])
-    return matched
+    within_radius = [c for c in matched if c["distance_km"] <= radius_km]
+    if within_radius:
+        return within_radius
+
+    # If no centers exist within the strict radius, always return top 2 closest centers
+    return matched[:2]
 
 
 def get_appointments(vehicle_id: Optional[int] = None) -> List[Dict[str, Any]]:
