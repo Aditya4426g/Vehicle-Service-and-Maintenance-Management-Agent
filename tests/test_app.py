@@ -19,7 +19,7 @@ def test_app_initialization_and_layout():
     assert "Last Svc" in metric_labels
 
     # Verify Tabs exist
-    assert len(at.tabs) == 4
+    assert len(at.tabs) == 3
 
 
 def test_app_chat_message_flow():

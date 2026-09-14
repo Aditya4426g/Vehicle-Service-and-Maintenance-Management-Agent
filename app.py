@@ -123,11 +123,9 @@ if "messages" not in st.session_state:
         {
             "role": "assistant",
             "content": (
-                "👋 **Hello Rahul!** I am your **Vehicle Service & Maintenance Assistant**, "
-                f"powered by `{GROQ_MODEL}` through Groq.\n\n"
-                "I can analyze your **Tata Nexon's** maintenance schedule, discover authorized workshops "
-                "across India, verify real-time slot availability, and confirm your service booking. "
-                "How can I help you today?"
+                "👋 **Hello Rahul!** How can I assist you with your **Tata Nexon** today?\n\n"
+                "I can check your maintenance schedule, locate authorized Tata service centers, "
+                "verify slot availability, and book your service appointments."
             )
         }
     ]
@@ -199,36 +197,23 @@ with st.sidebar:
             st.session_state.pending_prompt = prompt
 
     st.markdown("---")
-    st.markdown("### System Telemetry")
-    cfg = validate_config()
-    st.write(f"• **AI Engine:** `{cfg['model']}`")
-    st.write(f"• **Tool Budget:** `{cfg['max_tool_calls']} calls max`")
-    if cfg["groq_configured"]:
-        st.success("Groq API: Connected")
-    else:
-        st.info("Groq API: Local Simulation")
-
     if st.button("🔄 Reset Conversation", use_container_width=True):
         st.session_state.messages = [st.session_state.messages[0]]
         st.rerun()
 
 # Main Application Header
-st.markdown('<div class="main-title">🚗 AutoCare AI — Vehicle Service & Maintenance Agent</div>', unsafe_allow_html=True)
-st.markdown(f'<div class="sub-title">Autonomous Automotive Assistant powered by Groq and <code>{GROQ_MODEL}</code></div>', unsafe_allow_html=True)
+st.markdown('<div class="main-title">🚗 AutoCare AI</div>', unsafe_allow_html=True)
+st.markdown('<div class="sub-title">Intelligent Service & Maintenance Assistant for Tata Nexon</div>', unsafe_allow_html=True)
 
-# 4 Core Dashboard Tabs
-tab_chat, tab_dashboard, tab_workshops, tab_appointments = st.tabs([
-    "💬 Agent Assistant",
-    "📊 Vehicle Telemetry & History",
-    "🏢 Workshop Directory",
-    "📅 Appointments & Alerts"
+# 3 Core Tabs (Chat Assistant, Vehicle Details, Appointments)
+tab_chat, tab_dashboard, tab_appointments = st.tabs([
+    "💬 Assistant",
+    "📊 Vehicle Details",
+    "📅 Appointments"
 ])
 
 # TAB 1: Chat Assistant
 with tab_chat:
-    st.markdown("##### Chat with your AI Maintenance Agent")
-    st.caption("Ask maintenance questions in plain English. The agent determines intent, executes deterministic Python tools, and returns structured answers.")
-
     # Render Conversation History with Avatars in chronological order
     for msg in st.session_state.messages:
         avatar = "🚗" if msg["role"] == "assistant" else "👤"
@@ -265,63 +250,9 @@ with tab_dashboard:
     else:
         st.info("No past service records on file.")
 
-# TAB 3: Interactive Live Workshop Directory
-with tab_workshops:
-    st.markdown("##### Live Authorized Service Center Finder")
-    st.caption("Enter any city, landmark, or region to search for authorized Tata workshops with live distances and verified contacts.")
-
-    # Location Search Controls
-    loc_col1, loc_col2 = st.columns([3, 1])
-    with loc_col1:
-        search_query = st.text_input(
-            "Search City or Area",
-            value="Udaipur, Rajasthan",
-            placeholder="e.g. Udaipur, Bangalore, Jaipur, Mumbai, Delhi..."
-        )
-    with loc_col2:
-        radius_filter = st.slider("Search Radius (km)", min_value=5, max_value=50, value=30, step=5)
-
-    # Preset City Quick Buttons
-    st.write("**Quick Locations:**")
-    quick_cities = ["Udaipur, Rajasthan", "Indiranagar, Bangalore", "Jaipur, Rajasthan", "Mumbai, Maharashtra", "Delhi NCR"]
-    q_cols = st.columns(len(quick_cities))
-    for idx, city in enumerate(quick_cities):
-        if q_cols[idx].button(city, key=f"city_btn_{city}", use_container_width=True):
-            search_query = city
-
-    # Live Geocoding & Workshop Lookup
-    with st.spinner(f"Discovering authorized service centers near '{search_query}'..."):
-        geo = geocode_location(search_query)
-        if geo.get("status") == "SUCCESS" and geo.get("latitude"):
-            lat = geo["latitude"]
-            lon = geo["longitude"]
-            discovered = search_service_centers(lat, lon, radius_km=radius_filter)
-        else:
-            discovered = database.get_service_centers_near(24.5787, 73.6862, radius_km=radius_filter)
-
-    st.markdown(f"**Found {len(discovered)} Authorized Centers near `{search_query}`:**")
-    st.markdown("---")
-
-    for c in discovered:
-        with st.container():
-            col_info, col_contact, col_action = st.columns([3, 2, 1])
-            with col_info:
-                st.markdown(f"##### {c.get('name', 'Authorized Workshop')}")
-                st.caption(f"📍 {c.get('address', 'Address on file')}")
-                st.write(f"⭐ Rating: **{c.get('rating', 4.7)} / 5.0**")
-            with col_contact:
-                st.write(f"📏 Distance: **{c.get('distance_km', 2.5)} km** away")
-                st.write(f"📞 Contact: `{c.get('phone', '+91 294 2490111')}`")
-                st.caption(f"Center ID: `{c.get('center_id')}`")
-            with col_action:
-                if st.button("📅 Book Here", key=f"book_dir_{c.get('center_id')}", use_container_width=True):
-                    st.session_state.pending_prompt = f"Check availability for {c.get('name')} ({c.get('center_id')}) tomorrow morning"
-                    st.rerun()
-            st.divider()
-
-# TAB 4: Appointments & Notifications
+# TAB 3: Appointments
 with tab_appointments:
-    st.markdown("##### Active & Scheduled Service Appointments")
+    st.markdown("##### Scheduled Appointments")
     appts = database.get_appointments(vehicle_id=1)
     if appts:
         for appt in appts:
@@ -338,17 +269,7 @@ with tab_appointments:
                 </div>
                 """, unsafe_allow_html=True)
     else:
-        st.info("No active appointments booked yet.")
-
-    st.markdown("---")
-    st.markdown("##### Multi-Channel Dispatch Audit Trail")
-    user_data = database.get_user(1) or {"name": "Rahul", "email": "rahul@example.com", "phone": "+91 9876543210"}
-    st.write(f"**Customer:** {user_data.get('name')} | **Email:** `{user_data.get('email')}` | **Mobile:** `{user_data.get('phone')}`")
-
-    if hasattr(database, "_LOCAL_NOTIFICATIONS") and database._LOCAL_NOTIFICATIONS:
-        for notif in database._LOCAL_NOTIFICATIONS:
-            with st.expander(f"Notification #{notif['id']} — {notif.get('notification_type', 'CONFIRMATION')} [{notif.get('status', 'SENT')}]"):
-                st.write(notif.get("message"))
+        st.info("No active appointments booked yet. Ask the assistant to book a service appointment!")
 
 # ==============================================================================
 # ChatGPT-Style Fixed Bottom Chat Input
