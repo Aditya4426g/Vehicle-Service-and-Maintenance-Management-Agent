@@ -602,3 +602,112 @@ def update_vehicle_mileage(vehicle_id: int, new_mileage: int) -> Dict[str, Any]:
         return {"status": "SUCCESS", "vehicle_id": vehicle_id, "current_mileage": new_mileage}
 
     return {"status": "FAILED", "error": "Vehicle not found"}
+
+
+def add_vehicle(
+    user_id: int = 1,
+    make: str = "Tata",
+    model: str = "Harrier",
+    registration_number: Optional[str] = None,
+    current_mileage: int = 0,
+    variant: Optional[str] = None,
+    year: int = 2024,
+    label: Optional[str] = None,
+    last_service_date: Optional[str] = None,
+    last_service_mileage: int = 0
+) -> Dict[str, Any]:
+    """
+    Add and register a new vehicle for a user.
+    Auto-assigns ID, label (e.g. Vehicle C), and default maintenance schedule.
+    """
+    import random
+    from datetime import date
+
+    existing_vehicles = get_user_vehicles(user_id=user_id)
+    next_letter = chr(ord('A') + len(existing_vehicles)) if len(existing_vehicles) < 26 else str(len(existing_vehicles) + 1)
+    assigned_label = label or f"Vehicle {next_letter}"
+
+    if not registration_number:
+        reg_num = f"KA-0{len(existing_vehicles) + 1}-XY-{random.randint(1000, 9999)}"
+    else:
+        reg_num = registration_number.strip().upper()
+
+    svc_date = last_service_date or str(date.today())
+    new_id = max(_LOCAL_VEHICLES.keys(), default=0) + 1
+
+    payload = {
+        "id": new_id,
+        "user_id": user_id,
+        "label": assigned_label,
+        "make": make.strip().title(),
+        "model": model.strip().title(),
+        "variant": variant or "Standard Variant",
+        "year": year,
+        "registration_number": reg_num,
+        "current_mileage": current_mileage,
+        "last_service_date": svc_date,
+        "last_service_mileage": last_service_mileage
+    }
+
+    if _supabase_client:
+        try:
+            res = _supabase_client.table("vehicles").insert(payload).execute()
+            if res.data:
+                payload["id"] = res.data[0]["id"]
+        except Exception as e:
+            print(f"Supabase add_vehicle warning: {e}")
+
+    _LOCAL_VEHICLES[payload["id"]] = payload
+
+    # Default maintenance schedule for newly added vehicle
+    _LOCAL_MAINTENANCE_SCHEDULES[payload["id"]] = {
+        "id": payload["id"],
+        "vehicle_id": payload["id"],
+        "service_type": "Periodic Maintenance Service",
+        "interval_km": 5000,
+        "interval_months": 6,
+        "last_service_mileage": last_service_mileage,
+        "last_service_date": svc_date
+    }
+
+    return {
+        "status": "SUCCESS",
+        "vehicle": payload,
+        "message": f"Successfully added {payload['make']} {payload['model']} ({payload['registration_number']}) as {payload['label']}."
+    }
+
+
+def delete_vehicle(vehicle_identifier: Any, user_id: int = 1) -> Dict[str, Any]:
+    """
+    Delete a vehicle from the user's garage by name, label, registration number, or ID.
+    """
+    matched = None
+    if isinstance(vehicle_identifier, int) or (isinstance(vehicle_identifier, str) and vehicle_identifier.strip().isdigit()):
+        vid = int(str(vehicle_identifier).strip())
+        if vid in _LOCAL_VEHICLES and _LOCAL_VEHICLES[vid]["user_id"] == user_id:
+            matched = _LOCAL_VEHICLES[vid]
+
+    if not matched and isinstance(vehicle_identifier, str):
+        matched = get_vehicle_info(user_id=user_id, vehicle_name=vehicle_identifier)
+
+    if not matched:
+        return {
+            "status": "ERROR",
+            "error": f"Vehicle '{vehicle_identifier}' not found in user's garage."
+        }
+
+    vid = matched["id"]
+    if _supabase_client:
+        try:
+            _supabase_client.table("vehicles").delete().eq("id", vid).execute()
+        except Exception as e:
+            print(f"Supabase delete_vehicle warning: {e}")
+
+    _LOCAL_VEHICLES.pop(vid, None)
+    _LOCAL_MAINTENANCE_SCHEDULES.pop(vid, None)
+
+    return {
+        "status": "SUCCESS",
+        "deleted_vehicle": matched,
+        "message": f"Successfully removed {matched.get('label', '')}: {matched['make']} {matched['model']} ({matched['registration_number']}) from garage."
+    }

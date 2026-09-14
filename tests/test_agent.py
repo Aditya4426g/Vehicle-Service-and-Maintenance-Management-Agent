@@ -21,7 +21,9 @@ EXPECTED_TOOLS = [
     "check_availability",
     "book_appointment",
     "cancel_appointment",
-    "send_notification"
+    "send_notification",
+    "add_vehicle",
+    "delete_vehicle"
 ]
 
 
@@ -35,9 +37,9 @@ def test_agent_single_model_and_limit():
 
 
 def test_tool_schemas_completeness():
-    """Verify all 9 tool schemas exist and have valid function schema structure."""
+    """Verify all 11 tool schemas exist and have valid function schema structure."""
     registered_names = [t["function"]["name"] for t in TOOL_SCHEMAS]
-    assert len(registered_names) == 9
+    assert len(registered_names) == 11
 
     for tool_name in EXPECTED_TOOLS:
         assert tool_name in registered_names, f"Tool '{tool_name}' missing from TOOL_SCHEMAS"
@@ -48,6 +50,26 @@ def test_execute_tool_vehicle_info():
     res = execute_tool("get_vehicle_info", {"user_id": 1, "vehicle_name": "Tata Nexon"})
     assert "vehicle" in res
     assert res["vehicle"]["model"] == "Nexon"
+
+
+def test_execute_tool_add_and_delete_vehicle():
+    """Verify execute_tool dispatch for add_vehicle and delete_vehicle."""
+    add_res = execute_tool("add_vehicle", {
+        "user_id": 1,
+        "make": "Tata",
+        "model": "Harrier",
+        "registration_number": "KA-04-HR-9999",
+        "current_mileage": 1200
+    })
+    assert add_res["status"] == "SUCCESS"
+    assert add_res["vehicle"]["model"] == "Harrier"
+
+    # Delete vehicle
+    del_res = execute_tool("delete_vehicle", {
+        "user_id": 1,
+        "vehicle_identifier": "KA-04-HR-9999"
+    })
+    assert del_res["status"] == "SUCCESS"
 
 
 def test_execute_tool_maintenance_calculation():

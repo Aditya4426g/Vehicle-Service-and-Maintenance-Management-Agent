@@ -212,19 +212,6 @@ with st.sidebar:
         st.success(f"✅ **Good Standing**\n\n{status_calc['remaining_km']} km remaining until next service.")
 
     st.markdown("---")
-    st.markdown("### Quick Prompts")
-    quick_prompts = [
-        f"Is my {vehicle['model']} service due?",
-        "Show details of Vehicle B",
-        "Show my service history",
-        "Find service centers near Udaipur",
-        "Book an appointment for tomorrow morning"
-    ]
-    for prompt in quick_prompts:
-        if st.button(prompt, key=f"btn_{prompt}", use_container_width=True):
-            st.session_state.pending_prompt = prompt
-
-    st.markdown("---")
     if st.button("🔄 Reset Conversation", use_container_width=True):
         st.session_state.messages = [st.session_state.messages[0]]
         st.rerun()
@@ -280,7 +267,9 @@ with tab_dashboard:
 
     st.markdown("---")
     st.markdown("##### Garage Overview — All Registered Vehicles")
-    garage_cols = st.columns(len(user_vehicles))
+    st.caption("💡 *You can add or delete vehicles via prompt in chat (e.g. 'Add my Tata Harrier' or 'Delete Vehicle B') or manage below.*")
+
+    garage_cols = st.columns(max(len(user_vehicles), 1))
     for idx, v in enumerate(user_vehicles):
         with garage_cols[idx]:
             is_active = (v["id"] == vehicle["id"])
@@ -297,9 +286,42 @@ with tab_dashboard:
             </div>
             """, unsafe_allow_html=True)
             if not is_active:
-                if st.button(f"Select {v.get('label', v['model'])}", key=f"switch_v_{v['id']}", use_container_width=True):
-                    st.session_state.selected_vehicle_id = v["id"]
+                btn_col1, btn_col2 = st.columns([2, 1])
+                with btn_col1:
+                    if st.button(f"Select {v.get('label', v['model'])}", key=f"switch_v_{v['id']}", use_container_width=True):
+                        st.session_state.selected_vehicle_id = v["id"]
+                        st.rerun()
+                with btn_col2:
+                    if st.button("🗑️", key=f"del_v_{v['id']}", help=f"Delete {v['model']}", use_container_width=True):
+                        database.delete_vehicle(v["id"])
+                        st.rerun()
+
+    with st.expander("➕ Add New Vehicle to Garage"):
+        with st.form("add_vehicle_form", clear_on_submit=True):
+            av_col1, av_col2 = st.columns(2)
+            with av_col1:
+                form_make = st.text_input("Make", value="Tata")
+                form_model = st.text_input("Model", placeholder="e.g. Harrier, Curvv, Safari")
+                form_variant = st.text_input("Variant", placeholder="e.g. Adventure Plus")
+            with av_col2:
+                form_reg = st.text_input("Registration Plate", placeholder="e.g. KA-03-TR-9012")
+                form_km = st.number_input("Current Mileage (km)", min_value=0, value=1500, step=100)
+                form_year = st.number_input("Year", min_value=2015, max_value=2026, value=2024)
+            if st.form_submit_button("Register Vehicle"):
+                if form_model:
+                    res = database.add_vehicle(
+                        user_id=1,
+                        make=form_make,
+                        model=form_model,
+                        registration_number=form_reg if form_reg else None,
+                        current_mileage=int(form_km),
+                        variant=form_variant,
+                        year=int(form_year)
+                    )
+                    st.success(res["message"])
                     st.rerun()
+                else:
+                    st.error("Please provide at least the vehicle model name.")
 
 # TAB 3: Appointments
 with tab_appointments:

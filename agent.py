@@ -17,9 +17,13 @@ from tools.notification import send_notification, format_confirmation_message
 
 # System prompt giving strict instructions to GPT-OSS 120B
 SYSTEM_PROMPT = """You are the Vehicle Service & Maintenance Management Agent.
-You assist vehicle owners with maintenance status checks, finding service centers, and booking appointments.
+You assist vehicle owners with maintenance status checks, finding service centers, booking appointments, and managing vehicles in their garage.
 The user may own multiple vehicles (e.g. Vehicle A: Tata Nexon, Vehicle B: Tata Punch).
-When asked about a specific vehicle (such as 'Vehicle B', 'vechile b', 'second car', 'Tata Punch', 'Vehicle A', 'Tata Nexon', etc.) or all vehicles, call get_vehicle_info with that vehicle name/label to fetch its accurate specifications and maintenance records.
+
+VEHICLE ACTIONS:
+- To inspect vehicle details, maintenance, or list all vehicles, call get_vehicle_info.
+- To ADD a vehicle when the user asks (e.g. 'Add my new Tata Harrier', 'Add vehicle Maruti Swift KA-03-AB-1234', 'register a car'), call add_vehicle with the make, model, registration, and other provided details.
+- To DELETE or REMOVE a vehicle when the user asks (e.g. 'Delete Vehicle B', 'Remove Tata Punch from my garage', 'delete my car'), call delete_vehicle with the vehicle name, label, or registration.
 
 CRITICAL RULES:
 1. Never perform arithmetic or maintenance calculations yourself. Always call calculate_service_status.
@@ -174,6 +178,42 @@ TOOL_SCHEMAS = [
                 "required": ["user_id", "appointment_id", "message"]
             }
         }
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "add_vehicle",
+            "description": "Add and register a new vehicle into the user's garage.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "user_id": {"type": "integer", "description": "User ID (default 1)"},
+                    "make": {"type": "string", "description": "Manufacturer make (e.g. 'Tata', 'Hyundai', 'Maruti')"},
+                    "model": {"type": "string", "description": "Model of the vehicle (e.g. 'Harrier', 'Curvv', 'Safari', 'Swift')"},
+                    "registration_number": {"type": "string", "description": "Registration license plate number (optional)"},
+                    "current_mileage": {"type": "integer", "description": "Current odometer mileage in km (default 0)"},
+                    "variant": {"type": "string", "description": "Variant or trim (optional)"},
+                    "year": {"type": "integer", "description": "Model manufacturing year (optional)"},
+                    "label": {"type": "string", "description": "Vehicle label like 'Vehicle C' (optional)"}
+                },
+                "required": ["make", "model"]
+            }
+        }
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "delete_vehicle",
+            "description": "Delete or remove a vehicle from the user's garage.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "user_id": {"type": "integer", "description": "User ID (default 1)"},
+                    "vehicle_identifier": {"type": "string", "description": "Vehicle name, model, label, or registration (e.g. 'Vehicle B', 'Tata Punch', 'KA-05-NB-5678')"}
+                },
+                "required": ["vehicle_identifier"]
+            }
+        }
     }
 ]
 
@@ -244,6 +284,24 @@ def execute_tool(name: str, arguments: Dict[str, Any]) -> Dict[str, Any]:
                 appointment_id=arguments.get("appointment_id"),
                 message=arguments["message"],
                 channel=arguments.get("channel", "EMAIL")
+            )
+
+        elif name == "add_vehicle":
+            return database.add_vehicle(
+                user_id=arguments.get("user_id", 1),
+                make=arguments.get("make", "Tata"),
+                model=arguments.get("model", "Harrier"),
+                registration_number=arguments.get("registration_number"),
+                current_mileage=arguments.get("current_mileage", 0),
+                variant=arguments.get("variant"),
+                year=arguments.get("year", 2024),
+                label=arguments.get("label")
+            )
+
+        elif name == "delete_vehicle":
+            return database.delete_vehicle(
+                vehicle_identifier=arguments.get("vehicle_identifier"),
+                user_id=arguments.get("user_id", 1)
             )
 
         else:
