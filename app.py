@@ -99,6 +99,17 @@ st.markdown("""
         padding: 1.2rem;
         margin-bottom: 1rem;
     }
+
+    /* Fixed bottom container spacing so messages never get obscured */
+    .block-container {
+        padding-bottom: 110px !important;
+    }
+
+    /* Floating ChatGPT style input bar */
+    [data-testid="stChatInput"] {
+        border-radius: 16px !important;
+        box-shadow: 0 4px 20px rgba(0, 0, 0, 0.08) !important;
+    }
 </style>
 """, unsafe_allow_html=True)
 
@@ -218,31 +229,11 @@ with tab_chat:
     st.markdown("##### Chat with your AI Maintenance Agent")
     st.caption("Ask maintenance questions in plain English. The agent determines intent, executes deterministic Python tools, and returns structured answers.")
 
-    # Render Conversation History with Avatars
+    # Render Conversation History with Avatars in chronological order
     for msg in st.session_state.messages:
         avatar = "🚗" if msg["role"] == "assistant" else "👤"
         with st.chat_message(msg["role"], avatar=avatar):
             st.markdown(msg["content"])
-
-    # Handle incoming input (from chat input or quick prompt button)
-    user_input = st.chat_input("Type your question here (e.g. 'Find Tata service centers in Udaipur' or 'Book a slot for tomorrow')...")
-    if "pending_prompt" in st.session_state:
-        user_input = st.session_state.pop("pending_prompt")
-
-    if user_input:
-        st.session_state.messages.append({"role": "user", "content": user_input})
-        with st.chat_message("user", avatar="👤"):
-            st.markdown(user_input)
-
-        with st.chat_message("assistant", avatar="🚗"):
-            with st.spinner("Analyzing request and executing tools..."):
-                response = st.session_state.agent.run(
-                    user_input,
-                    history=st.session_state.messages[:-1]
-                )
-            st.markdown(response)
-
-        st.session_state.messages.append({"role": "assistant", "content": response})
 
 # TAB 2: Vehicle Telemetry & Service History
 with tab_dashboard:
@@ -358,3 +349,22 @@ with tab_appointments:
         for notif in database._LOCAL_NOTIFICATIONS:
             with st.expander(f"Notification #{notif['id']} — {notif.get('notification_type', 'CONFIRMATION')} [{notif.get('status', 'SENT')}]"):
                 st.write(notif.get("message"))
+
+# ==============================================================================
+# ChatGPT-Style Fixed Bottom Chat Input
+# Root-level st.chat_input anchors fixed to the bottom viewport across the app
+# ==============================================================================
+user_input = st.chat_input("Type your question here (e.g. 'Find Tata service centers in Udaipur' or 'Book a slot for tomorrow')...")
+if "pending_prompt" in st.session_state:
+    user_input = st.session_state.pop("pending_prompt")
+
+if user_input:
+    st.session_state.messages.append({"role": "user", "content": user_input})
+    with st.spinner("Analyzing request and executing tools..."):
+        response = st.session_state.agent.run(
+            user_input,
+            history=st.session_state.messages[:-1]
+        )
+    st.session_state.messages.append({"role": "assistant", "content": response})
+    st.rerun()
+
