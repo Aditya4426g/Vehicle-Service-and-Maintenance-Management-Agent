@@ -1,6 +1,6 @@
 # 🚗 Vehicle Service & Maintenance Management Agent
 
-> An enterprise-grade, deterministic AI assistant powered by **Groq** and **`openai/gpt-oss-120b`**, purpose-built for predictive vehicle telemetry analysis, authorized workshop discovery, and collision-guaranteed appointment scheduling.
+> An enterprise-grade, deterministic AI assistant powered by **Groq** and `openai/gpt-oss-120b`, purpose-built for predictive vehicle telemetry analysis, authorized workshop discovery, and collision-guaranteed appointment scheduling.
 
 [![Python](https://img.shields.io/badge/Python-3.10%2B-blue.svg)](https://www.python.org/)
 [![Streamlit](https://img.shields.io/badge/Streamlit-1.42%2B-FF4B4B.svg)](https://streamlit.io/)
@@ -36,8 +36,8 @@ The **Vehicle Service & Maintenance Management Agent** solves this end-to-end:
 - **Predictive Telemetry Monitoring**: Compares real-time odometer readings against manufacturer service schedules.
 - **Strict Deterministic Math**: Categorizes status into `OVERDUE`, `DUE`, `APPROACHING` (within 500 km or 30 days), and `NOT_DUE` in pure Python.
 - **Geographic Workshop Discovery**: Uses OpenStreetMap Nominatim and Overpass API to geocode addresses and identify nearest authorized workshops with Haversine distance ranking.
-- **Atomic Slot Booking**: Verifies real-time availability and prevents double-booking using composite unique constraints.
-- **Multi-Channel Dispatch**: Emits standardized notification confirmations via SMS and email with human-readable booking references (`BK10001`).
+- **Atomic Slot Booking**: Verifies real-time availability and prevents double‑booking using composite unique constraints.
+- **Multi‑Channel Dispatch**: Emits standardized notification confirmations via SMS and email with human‑readable booking references (`BK10001`).
 
 ---
 
@@ -66,14 +66,15 @@ The **Vehicle Service & Maintenance Management Agent** solves this end-to-end:
 │  - Interval Math          - Nominatim Geocode      - Slot Availability      │
 │  - Date Delta Calculation - OSM Overpass Query     - Collision Check        │
 │  - Strict Priority Rules  - Haversine Distance     - Reference Generation   │
+│                                                                             │
 └─────────────────────────────────────┬───────────────────────────────────────┘
-                                      │
-                                      ▼
-                     ┌─────────────────────────────────────────┐
-                     │       Supabase PostgreSQL Database      │
-                     │  - vehicles, appointments, centers      │
-                     │  - UNIQUE(center, date, time)           │
-                     └─────────────────────────────────────────┘
+                                       │
+                                       ▼
+                      ┌─────────────────────────────────────────┐
+                      │       Supabase PostgreSQL Database      │
+                      │  - vehicles, appointments, centers      │
+                      │  - UNIQUE(center, date, time)           │
+                      └─────────────────────────────────────────┘
 ```
 
 > **Critical Rule**: **Never let an LLM do calendar or mileage arithmetic.** LLMs are probabilistic language models prone to calculation drift. All date differences, kilometer subtractions, threshold checks, and collision queries are executed in deterministic Python functions. The LLM only receives structured JSON outputs and synthesizes empathetic, professional explanations.
@@ -84,12 +85,12 @@ The **Vehicle Service & Maintenance Management Agent** solves this end-to-end:
 
 1. **Single LLM Enforcement**:
    - Exactly **one model** is used across the entire system: **`openai/gpt-oss-120b`** via the Groq API.
-   - Strictly **zero fallback models** (no silent fallbacks to GPT-4, Claude, Gemini, Llama, or Mistral).
+   - Strictly **zero fallback models** (no silent fallbacks to GPT‑4, Claude, Gemini, Llama, or Mistral).
 2. **Hard Loop Ceiling**:
-   - The agent's autonomous tool-calling loop enforces a strict **12-iteration ceiling**.
-   - If an edge case or recursive chain attempts a 13th call, execution halts immediately with a user-friendly diagnostic message.
+   - The agent's autonomous tool‑calling loop enforces a strict **12‑iteration ceiling**.
+   - If an edge case or recursive chain attempts a 13th call, execution halts immediately with a user‑friendly diagnostic message.
 3. **Exponential Backoff**:
-   - Transient network or rate-limit HTTP errors (429 / 503) retry up to 3 times with exponential backoff ($1\text{s} \to 2\text{s} \to 4\text{s}$).
+   - Transient network or rate‑limit HTTP errors (429 / 503) retry up to 3 times with exponential backoff ($1\text{s} \to 2\text{s} \to 4\text{s}$).
 4. **Explicit User Consent for Booking**:
    - Merely asking *"Is my car due for service?"* evaluates status, but will **never** trigger a booking until the user explicitly requests one.
 
@@ -172,11 +173,11 @@ The agent interacts with the world exclusively through 9 typed JSON function sch
 
 ```
 Project/
-├── app.py                      # Modern 4-Tab Streamlit Dashboard
+├── app.py                      # Modern 4‑Tab Streamlit Dashboard
 ├── agent.py                    # Groq openai/gpt-oss-120b Agent Orchestrator
 ├── database.py                 # Supabase PostgreSQL CRUD & Local Seed Store
 ├── config.py                   # Environment configuration & model constants
-├── demo.py                     # Self-contained live 7-step walkthrough script
+├── demo.py                     # Self‑contained live 7‑step walkthrough script
 ├── requirements.txt            # Pinned dependencies
 ├── .env.example                # Template for environment variables
 ├── .gitignore                  # Git ignore rules
@@ -190,7 +191,7 @@ Project/
 │   ├── maintenance.py          # Deterministic maintenance status calculator
 │   ├── location.py             # OpenStreetMap Nominatim geocoding & Overpass radius
 │   ├── booking.py              # Slot availability, collision check, reference generator
-│   └── notification.py         # Multi-channel notification dispatcher & logger
+│   └── notification.py         # Multi‑channel notification dispatcher & logger
 │
 └── tests/
     ├── __init__.py
@@ -202,7 +203,7 @@ Project/
     ├── test_notification.py    # Notification formats, validation, DB logging (5 tests)
     ├── test_agent.py           # Tool schemas, dispatcher, loop ceiling, backoff (9 tests)
     ├── test_app.py             # Streamlit AppTest dashboard layout & chat flow (2 tests)
-    ├── test_integration.py     # End-to-end component wiring & state transitions (2 tests)
+    ├── test_integration.py     # End‑to‑end component wiring & state transitions (2 tests)
     ├── test_e2e.py             # Full Rahul/Tata Nexon persona workflow & edge cases (4 tests)
     └── test_reliability.py     # Network timeouts, corrupt inputs, 10 stress scenarios (10 tests)
 ```
@@ -218,15 +219,15 @@ Project/
 ### 2. Clone and Setup Environment
 ```bash
 # Clone the repository
-git clone https://github.com/your-username/vehicle-maintenance-agent.git
-cd vehicle-maintenance-agent
+git clone https://github.com/Aditya4426g/Vehicle-Service-and-Maintenance-Management-Agent.git
+cd Vehicle-Service-and-Maintenance-Management-Agent
 
 # Create virtual environment
 python -m venv venv
 
 # Activate virtual environment
 # Windows (cmd/powershell):
-.\venv\Scripts\activate
+.\\venv\\Scripts\\activate
 # macOS/Linux:
 source venv/bin/activate
 
@@ -258,7 +259,7 @@ NOMINATIM_USER_AGENT=vehicle_maintenance_agent_v1
 ## 🖥️ Running the Application
 
 ### Option A: Interactive Streamlit Web App
-Launch the modern 4-tab automotive dashboard:
+Launch the modern 4‑tab automotive dashboard:
 ```bash
 streamlit run app.py
 ```
@@ -266,13 +267,13 @@ Open your browser at `http://localhost:8501`.
 
 **Features available in the UI**:
 - **Tab 1 (`💬 Agent Assistant`)**: Chat with the agent, ask questions, or click prompt shortcuts.
-- **Tab 2 (`📊 Vehicle Telemetry & History`)**: Real-time odometer readings, service interval progress bar, and past service logs.
-- **Tab 3 (`🏢 Workshop Directory`)**: Discovered authorized service centers with distance, rating, phone, and 1-click booking selection.
+- **Tab 2 (`📊 Vehicle Telemetry & History`)**: Real‑time odometer readings, service interval progress bar, and past service logs.
+- **Tab 3 (`🏢 Workshop Directory`)**: Discovered authorized service centers with distance, rating, phone, and 1‑click booking selection.
 - **Tab 4 (`📅 Appointments & Alerts`)**: Active booking cards, reference codes, and sent notification audit logs.
 - **Sidebar**: Quick vehicle specs and a `🔄 Reset Conversation` button.
 
 ### Option B: Terminal Live Demo Walkthrough
-Run the automated, self-contained walkthrough script:
+Run the automated, self‑contained walkthrough script:
 ```bash
 python demo.py
 ```
@@ -293,18 +294,7 @@ Expected output:
 ============================= test session starts =============================
 collected 70 items
 
-tests/test_agent.py .........                                            [ 12%]
-tests/test_app.py ..                                                     [ 15%]
-tests/test_booking.py .......                                            [ 25%]
-tests/test_database.py .........                                         [ 38%]
-tests/test_database_schema.py .....                                      [ 45%]
-tests/test_e2e.py ....                                                   [ 51%]
-tests/test_integration.py ..                                             [ 54%]
-tests/test_location.py ........                                          [ 65%]
-tests/test_maintenance.py .........                                      [ 78%]
-tests/test_notification.py .....                                         [ 85%]
-tests/test_reliability.py ..........                                     [100%]
-
+... (output omitted for brevity) ...
 ============================= 70 passed in 39.78s =============================
 ```
 
@@ -325,37 +315,7 @@ The script `demo.py` demonstrates the full user persona without requiring any ma
 4. **Availability**: Identifies open time slots for tomorrow.
 5. **Booking**: Atomically books `09:00 AM` and generates reference `BK10001`.
 6. **Notification**: Dispatches SMS and Email confirmation logs.
-7. **Collision Rejection**: Deliberately attempts to double-book the same slot and verifies that the system blocks the collision.
-
----
-
-## 💬 Interview Defense & Technical FAQ
-
-### Q1: Why use deterministic Python functions instead of letting the LLM calculate intervals?
-> **Answer**: LLMs are probabilistic token predictors, not mathematical engines. Date arithmetic across leap years, month boundaries, and composite priority rules (`OVERDUE` vs `DUE` vs `APPROACHING`) frequently suffers from hallucinations and off-by-one errors. By restricting the LLM strictly to intent recognition and parameter extraction, we guarantee 100% mathematical accuracy and auditability.
-
-### Q2: Why strictly enforce `openai/gpt-oss-120b` without fallback models?
-> **Answer**: In enterprise agentic systems, tool calling schemas, system prompt compliance, and JSON output adherence vary significantly across model architectures. Introducing silent fallbacks to different models (e.g. Llama or Mistral) risks unexpected schema mismatches and unpredictable tool parameter formatting. We instead harden the single model using exponential backoff retry loops and deterministic validation.
-
-### Q3: How do you prevent double-booking race conditions?
-> **Answer**: At the application layer, `tools/booking.py` checks slot availability before creating an appointment. At the database layer, Supabase PostgreSQL enforces a composite unique constraint: `CONSTRAINT uq_appointment_slot UNIQUE (service_center_id, appointment_date, appointment_time)`. If two simultaneous requests pass the application check, the database engine atomically rejects the second insert with a unique constraint violation.
-
-### Q4: Why OpenStreetMap (Nominatim + Overpass) instead of Google Maps API?
-> **Answer**: OpenStreetMap offers an open, cost-effective, and transparent geospatial platform without proprietary API keys or restrictive per-query billing. We use Nominatim for geocoding and Overpass API for radius-based automotive POI extraction, augmented by Haversine distance calculations in Python.
-
-### Q5: How does the agent prevent infinite tool-calling loops?
-> **Answer**: `agent.py` tracks the number of tool invocations within a single `run()` request and enforces a hard ceiling of 12 calls. If an edge case or recursive cycle reaches the ceiling, execution breaks cleanly and returns a structured message to the user.
-
----
-
-## 👥 Team Responsibilities
-
-| Team Member | Core Focus | Key Deliverables |
-|---|---|---|
-| **Member 1** | **Backend & Database Engineer** | `database/schema.sql`, `database/seed.sql`, `database.py`, Schema tests |
-| **Member 2** | **Core Logic & Tools Specialist** | `tools/maintenance.py`, `tools/location.py`, `tools/notification.py` |
-| **Member 3** | **Agentic AI & LLM Engineer** | `agent.py`, `tools/booking.py`, Groq `openai/gpt-oss-120b` function calling, retry logic |
-| **Member 4** | **Frontend & QA Lead** | `app.py`, `demo.py`, `tests/` E2E test suites, `README.md` |
+7. **Collision Rejection**: Deliberately attempts to double‑book the same slot and verifies that the system blocks the collision.
 
 ---
 
