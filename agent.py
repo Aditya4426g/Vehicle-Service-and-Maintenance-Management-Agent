@@ -1,53 +1,48 @@
 """
-agent.py - Single AI Agent Orchestrator.
-Exclusively uses openai/gpt-oss-120b via Groq API.
-Dispatches deterministic Python tools, enforces the 12-call loop limit,
-and guarantees zero model fallback.
+agent.py - AI Agent Orchestrator using Groq (openai/gpt-oss-120b).
+Runs multi-turn reasoning with deterministic Python tools (capped at 12 calls).
 """
 import json
+import re
 import time
 from typing import Dict, List, Any, Optional
-
 from config import GROQ_MODEL, MAX_TOOL_CALLS, GROQ_API_KEY
 import database
 from tools.maintenance import calculate_service_status
-from tools.location import geocode_location, search_service_centers
+from tools.location import geocode_location, search_service_centers, detect_current_location
 from tools.booking import check_availability, book_appointment, cancel_appointment, get_appointment
 from tools.notification import send_notification, format_confirmation_message
 
-# System prompt giving strict instructions to GPT-OSS 120B
-SYSTEM_PROMPT = """You are the Vehicle Service & Maintenance Management Agent.
-You assist vehicle owners with maintenance status checks, finding service centers, booking appointments, and managing vehicles in their garage.
-The user may own multiple vehicles (e.g. Vehicle A: Tata Nexon, Vehicle B: Tata Punch).
-
-VEHICLE ACTIONS:
-- To inspect vehicle details, maintenance, or list all vehicles, call get_vehicle_info.
-- To ADD a vehicle when the user asks (e.g. 'Add my new Tata Harrier', 'Add vehicle Maruti Swift KA-03-AB-1234', 'register a car'), call add_vehicle with the make, model, registration, and other provided details.
-- To DELETE or REMOVE a vehicle when the user asks (e.g. 'Delete Vehicle B', 'Remove Tata Punch from my garage', 'delete my car'), call delete_vehicle with the vehicle name, label, or registration.
-
-CRITICAL RULES:
-1. Never perform arithmetic or maintenance calculations yourself. Always call calculate_service_status.
-2. Never invent vehicle data, service centers, availability, or booking references.
-3. Finding a service center or checking availability DOES NOT mean an appointment is booked.
-4. Only call book_appointment if the user explicitly requests booking and date/time are specified.
-5. NEVER claim that an appointment is booked unless book_appointment returns status: SUCCESS.
-6. When booking succeeds, use send_notification with the returned appointment_id.
-7. Be polite, concise, and structured in your final response.
-8. ALWAYS present the service centers returned by search_service_centers. If they are beyond the requested radius, inform the user that these are the closest authorized service centers nearby, displaying their name, address, distance, rating, and contact details.
+# System Prompt with clear instructions for the AI model
+SYSTEM_PROMPT = """You are the Vehicle Maintenance AI Assistant for Rahul in Bengaluru (email: jaxiver377@gmail.com).
+Follow these rules strictly:
+1. SERVICE UPDATES & ODOMETER:
+   - When user provides a new odometer reading or says they drove X km, call `update_vehicle_mileage` to update current mileage.
+   - When user mentions completing a service or updating service date:
+     Call `update_service_after_completion` or `update_vehicle_service_details`. If next service interval is not mentioned, default to 5000 km.
+2. LOCATION & SERVICE CENTERS:
+   - If user asks for nearby/nearest workshops without a specific city, call `geocode_location` with "current location".
+   - Always filter by the active vehicle's brand (e.g. brand="Tata" for Tata Nexon). Show ONLY authorized centers for that brand.
+3. BOOKING & SERVICE COST:
+   - Only book an appointment if the user explicitly specifies date and time.
+   - After successful booking, call `send_notification`.
+   - Ask the user: "Once your service is completed, please let me know the final invoice cost so I can update your maintenance records."
+   - When user states the service cost (e.g. "service cost was 3500", "I paid 4200", "cost 2500"), call `update_service_cost` to save it in the database.
+4. Always use tools for math, calculations, and data lookups. Never make up vehicle data or booking numbers.
 """
 
-# JSON Schemas for all 9 deterministic tools
+# Tool schemas available to the AI model
 TOOL_SCHEMAS = [
     {
         "type": "function",
         "function": {
             "name": "get_vehicle_info",
-            "description": "Retrieve vehicle information by user_id and optional vehicle name, model, or label (e.g. 'Tata Nexon', 'Vehicle A', 'Vehicle B', 'Tata Punch').",
+            "description": "Get vehicle details by user_id and optional name or label.",
             "parameters": {
                 "type": "object",
                 "properties": {
-                    "user_id": {"type": "integer", "description": "The user ID (default 1)"},
-                    "vehicle_name": {"type": "string", "description": "Optional make, model, or label (e.g. 'Tata Nexon', 'Vehicle A', 'Vehicle B', 'Tata Punch', 'second car')"}
+                    "user_id": {"type": "integer", "description": "User ID (default 1)"},
+                    "vehicle_name": {"type": "string", "description": "Vehicle name or label"}
                 },
                 "required": ["user_id"]
             }
@@ -57,12 +52,10 @@ TOOL_SCHEMAS = [
         "type": "function",
         "function": {
             "name": "get_service_history",
-            "description": "Retrieve past service history records for a vehicle.",
+            "description": "Get past service history for a vehicle.",
             "parameters": {
                 "type": "object",
-                "properties": {
-                    "vehicle_id": {"type": "integer", "description": "The vehicle ID"}
-                },
+                "properties": {"vehicle_id": {"type": "integer"}},
                 "required": ["vehicle_id"]
             }
         }
@@ -71,15 +64,16 @@ TOOL_SCHEMAS = [
         "type": "function",
         "function": {
             "name": "calculate_service_status",
-            "description": "Calculate deterministic vehicle maintenance status (NOT_DUE, APPROACHING, DUE, OVERDUE).",
+            "description": "Calculate service due status (OVERDUE, DUE, APPROACHING, NOT_DUE).",
             "parameters": {
                 "type": "object",
                 "properties": {
-                    "current_mileage": {"type": "integer", "description": "Current odometer reading in km"},
-                    "last_service_mileage": {"type": "integer", "description": "Mileage at last service in km"},
-                    "interval_km": {"type": "integer", "description": "Service interval in km (e.g. 5000)"},
-                    "last_service_date": {"type": "string", "description": "Date of last service in YYYY-MM-DD format"},
-                    "interval_months": {"type": "integer", "description": "Service interval in months (e.g. 6)"}
+                    "current_mileage": {"type": "integer"},
+                    "last_service_mileage": {"type": "integer"},
+                    "interval_km": {"type": "integer"},
+                    "last_service_date": {"type": "string"},
+                    "interval_months": {"type": "integer"},
+                    "reference_date": {"type": "string"}
                 },
                 "required": ["current_mileage", "last_service_mileage", "interval_km", "last_service_date", "interval_months"]
             }
@@ -89,12 +83,10 @@ TOOL_SCHEMAS = [
         "type": "function",
         "function": {
             "name": "geocode_location",
-            "description": "Convert address, city, or neighborhood name into latitude and longitude coordinates.",
+            "description": "Convert address to GPS coordinates or detect current location.",
             "parameters": {
                 "type": "object",
-                "properties": {
-                    "address_or_city": {"type": "string", "description": "Address, area, or city name"}
-                },
+                "properties": {"address_or_city": {"type": "string"}},
                 "required": ["address_or_city"]
             }
         }
@@ -103,13 +95,14 @@ TOOL_SCHEMAS = [
         "type": "function",
         "function": {
             "name": "search_service_centers",
-            "description": "Search for nearby automotive service centers using coordinates.",
+            "description": "Find nearby authorized service centers by GPS coordinates and brand.",
             "parameters": {
                 "type": "object",
                 "properties": {
-                    "latitude": {"type": "number", "description": "Latitude coordinate"},
-                    "longitude": {"type": "number", "description": "Longitude coordinate"},
-                    "radius_km": {"type": "integer", "description": "Search radius in km (default 10)"}
+                    "latitude": {"type": "number"},
+                    "longitude": {"type": "number"},
+                    "radius_km": {"type": "integer"},
+                    "brand": {"type": "string"}
                 },
                 "required": ["latitude", "longitude"]
             }
@@ -119,13 +112,10 @@ TOOL_SCHEMAS = [
         "type": "function",
         "function": {
             "name": "check_availability",
-            "description": "Check available appointment time slots for a service center on a specific date.",
+            "description": "Check available booking slots for a service center and date.",
             "parameters": {
                 "type": "object",
-                "properties": {
-                    "center_id": {"type": "string", "description": "Stable service center ID (e.g. 'osm_101')"},
-                    "date": {"type": "string", "description": "Appointment date in YYYY-MM-DD format"}
-                },
+                "properties": {"center_id": {"type": "string"}, "date": {"type": "string"}},
                 "required": ["center_id", "date"]
             }
         }
@@ -134,15 +124,15 @@ TOOL_SCHEMAS = [
         "type": "function",
         "function": {
             "name": "book_appointment",
-            "description": "Book a service appointment. Requires explicit user request.",
+            "description": "Book a service appointment.",
             "parameters": {
                 "type": "object",
                 "properties": {
-                    "vehicle_id": {"type": "integer", "description": "Vehicle ID"},
-                    "center_id": {"type": "string", "description": "Stable service center ID"},
-                    "date": {"type": "string", "description": "Appointment date in YYYY-MM-DD format"},
-                    "time": {"type": "string", "description": "Time slot (e.g. '10:00 AM')"},
-                    "service_type": {"type": "string", "description": "Type of service (default 'Periodic Maintenance Service')"}
+                    "vehicle_id": {"type": "integer"},
+                    "center_id": {"type": "string"},
+                    "date": {"type": "string"},
+                    "time": {"type": "string"},
+                    "service_type": {"type": "string"}
                 },
                 "required": ["vehicle_id", "center_id", "date", "time"]
             }
@@ -152,12 +142,10 @@ TOOL_SCHEMAS = [
         "type": "function",
         "function": {
             "name": "cancel_appointment",
-            "description": "Cancel an existing appointment by booking reference.",
+            "description": "Cancel a booking by booking reference.",
             "parameters": {
                 "type": "object",
-                "properties": {
-                    "booking_reference": {"type": "string", "description": "Booking reference code (e.g. 'BK10001')"}
-                },
+                "properties": {"booking_reference": {"type": "string"}},
                 "required": ["booking_reference"]
             }
         }
@@ -170,10 +158,10 @@ TOOL_SCHEMAS = [
             "parameters": {
                 "type": "object",
                 "properties": {
-                    "user_id": {"type": "integer", "description": "User ID"},
-                    "appointment_id": {"type": "integer", "description": "Confirmed appointment ID from booking"},
-                    "message": {"type": "string", "description": "Notification message text"},
-                    "channel": {"type": "string", "description": "Channel: 'EMAIL' or 'IN_APP' (default 'EMAIL')"}
+                    "user_id": {"type": "integer"},
+                    "appointment_id": {"type": "integer"},
+                    "message": {"type": "string"},
+                    "channel": {"type": "string"}
                 },
                 "required": ["user_id", "appointment_id", "message"]
             }
@@ -183,18 +171,16 @@ TOOL_SCHEMAS = [
         "type": "function",
         "function": {
             "name": "add_vehicle",
-            "description": "Add and register a new vehicle into the user's garage.",
+            "description": "Add a new vehicle to the user's garage.",
             "parameters": {
                 "type": "object",
                 "properties": {
-                    "user_id": {"type": "integer", "description": "User ID (default 1)"},
-                    "make": {"type": "string", "description": "Manufacturer make (e.g. 'Tata', 'Hyundai', 'Maruti')"},
-                    "model": {"type": "string", "description": "Model of the vehicle (e.g. 'Harrier', 'Curvv', 'Safari', 'Swift')"},
-                    "registration_number": {"type": "string", "description": "Registration license plate number (optional)"},
-                    "current_mileage": {"type": "integer", "description": "Current odometer mileage in km (default 0)"},
-                    "variant": {"type": "string", "description": "Variant or trim (optional)"},
-                    "year": {"type": "integer", "description": "Model manufacturing year (optional)"},
-                    "label": {"type": "string", "description": "Vehicle label like 'Vehicle C' (optional)"}
+                    "user_id": {"type": "integer"},
+                    "make": {"type": "string"},
+                    "model": {"type": "string"},
+                    "registration_number": {"type": "string"},
+                    "current_mileage": {"type": "integer"},
+                    "label": {"type": "string"}
                 },
                 "required": ["make", "model"]
             }
@@ -204,233 +190,200 @@ TOOL_SCHEMAS = [
         "type": "function",
         "function": {
             "name": "delete_vehicle",
-            "description": "Delete or remove a vehicle from the user's garage.",
+            "description": "Remove a vehicle from garage.",
+            "parameters": {
+                "type": "object",
+                "properties": {"user_id": {"type": "integer"}, "vehicle_identifier": {"type": "string"}},
+                "required": ["vehicle_identifier"]
+            }
+        }
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "update_vehicle_mileage",
+            "description": "Update current odometer mileage for a vehicle.",
             "parameters": {
                 "type": "object",
                 "properties": {
-                    "user_id": {"type": "integer", "description": "User ID (default 1)"},
-                    "vehicle_identifier": {"type": "string", "description": "Vehicle name, model, label, or registration (e.g. 'Vehicle B', 'Tata Punch', 'KA-05-NB-5678')"}
+                    "vehicle_id": {"type": "integer"},
+                    "new_mileage": {"type": "integer"}
                 },
-                "required": ["vehicle_identifier"]
+                "required": ["vehicle_id", "new_mileage"]
+            }
+        }
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "update_vehicle_service_details",
+            "description": "Update last service date and last service mileage for a vehicle.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "vehicle_id": {"type": "integer"},
+                    "last_service_date": {"type": "string"},
+                    "last_service_mileage": {"type": "integer"},
+                    "current_mileage": {"type": "integer"}
+                },
+                "required": ["vehicle_id", "last_service_date", "last_service_mileage"]
+            }
+        }
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "update_service_after_completion",
+            "description": "Update vehicle mileage, schedule, and history after completing service.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "vehicle_id": {"type": "integer"},
+                    "service_date": {"type": "string"},
+                    "next_service_interval_km": {"type": "integer"},
+                    "service_mileage": {"type": "integer"},
+                    "service_type": {"type": "string"}
+                },
+                "required": ["vehicle_id", "service_date"]
+            }
+        }
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "update_service_cost",
+            "description": "Record or update the expense/cost of a completed service in the database.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "vehicle_id": {"type": "integer", "description": "Vehicle ID"},
+                    "cost": {"type": "number", "description": "Total service bill/cost in INR"},
+                    "service_history_id": {"type": "integer", "description": "Optional specific service history ID"}
+                },
+                "required": ["vehicle_id", "cost"]
             }
         }
     }
 ]
 
 
-def execute_tool(name: str, arguments: Dict[str, Any]) -> Dict[str, Any]:
-    """Deterministic dispatcher mapping tool call requests to Python functions."""
+def execute_tool(name: str, args: Dict[str, Any]) -> Dict[str, Any]:
+    """Execute Python tools requested by the AI agent."""
     try:
         if name == "get_vehicle_info":
-            res = database.get_vehicle_info(
-                user_id=arguments.get("user_id", 1),
-                vehicle_name=arguments.get("vehicle_name")
-            )
-            all_v = database.get_user_vehicles(user_id=arguments.get("user_id", 1))
-            summary_list = [
-                {"id": v["id"], "label": v.get("label", f"Vehicle {v['id']}"), "make": v["make"], "model": v["model"], "registration": v["registration_number"]}
-                for v in all_v
-            ]
-            if res:
-                return {"vehicle": res, "user_vehicles": summary_list}
-            return {"error": "Vehicle not found", "available_vehicles": summary_list}
-
+            v = database.get_vehicle_info(args.get("user_id", 1), args.get("vehicle_name"))
+            all_v = database.get_user_vehicles(args.get("user_id", 1))
+            return {"vehicle": v, "user_vehicles": [{"id": x["id"], "name": f"{x['make']} {x['model']}"} for x in all_v]}
         elif name == "get_service_history":
-            res = database.get_service_history(vehicle_id=arguments.get("vehicle_id", 1))
-            return {"service_history": res}
-
+            return {"service_history": database.get_service_history(int(args.get("vehicle_id", 1)))}
         elif name == "calculate_service_status":
-            return calculate_service_status(
-                current_mileage=arguments["current_mileage"],
-                last_service_mileage=arguments["last_service_mileage"],
-                interval_km=arguments["interval_km"],
-                last_service_date=arguments["last_service_date"],
-                interval_months=arguments["interval_months"],
-                reference_date=arguments.get("reference_date")
-            )
-
+            return calculate_service_status(int(args["current_mileage"]), int(args["last_service_mileage"]), int(args["interval_km"]), str(args["last_service_date"]), int(args["interval_months"]), args.get("reference_date"))
         elif name == "geocode_location":
-            return geocode_location(address_or_city=arguments["address_or_city"])
-
+            return geocode_location(str(args.get("address_or_city", "current location")))
         elif name == "search_service_centers":
-            res = search_service_centers(
-                latitude=arguments["latitude"],
-                longitude=arguments["longitude"],
-                radius_km=arguments.get("radius_km", 10)
-            )
-            return {"service_centers": res}
-
+            return {"service_centers": search_service_centers(float(args["latitude"]), float(args["longitude"]), int(args.get("radius_km", 10)), args.get("brand"))}
         elif name == "check_availability":
-            return check_availability(
-                center_id=arguments["center_id"],
-                date=arguments["date"]
-            )
-
+            return check_availability(str(args["center_id"]), str(args["date"]))
         elif name == "book_appointment":
-            return book_appointment(
-                vehicle_id=arguments["vehicle_id"],
-                center_id=arguments["center_id"],
-                date=arguments["date"],
-                time=arguments["time"],
-                service_type=arguments.get("service_type", "Periodic Maintenance Service")
-            )
-
+            return book_appointment(int(args["vehicle_id"]), str(args["center_id"]), str(args["date"]), str(args["time"]), str(args.get("service_type", "Periodic Maintenance Service")))
         elif name == "cancel_appointment":
-            return cancel_appointment(booking_reference=arguments["booking_reference"])
-
+            return cancel_appointment(str(args["booking_reference"]))
         elif name == "send_notification":
-            return send_notification(
-                user_id=arguments["user_id"],
-                appointment_id=arguments.get("appointment_id"),
-                message=arguments["message"],
-                channel=arguments.get("channel", "EMAIL")
-            )
-
+            appt_id = int(args["appointment_id"]) if args.get("appointment_id") else None
+            return send_notification(int(args.get("user_id", 1)), appt_id, str(args["message"]), str(args.get("channel", "EMAIL")))
         elif name == "add_vehicle":
-            return database.add_vehicle(
-                user_id=arguments.get("user_id", 1),
-                make=arguments.get("make", "Tata"),
-                model=arguments.get("model", "Harrier"),
-                registration_number=arguments.get("registration_number"),
-                current_mileage=arguments.get("current_mileage", 0),
-                variant=arguments.get("variant"),
-                year=arguments.get("year", 2024),
-                label=arguments.get("label")
-            )
-
+            return database.add_vehicle(args.get("user_id", 1), args.get("make", "Tata"), args.get("model", "Harrier"), args.get("registration_number"), args.get("current_mileage", 0), label=args.get("label"))
         elif name == "delete_vehicle":
-            return database.delete_vehicle(
-                vehicle_identifier=arguments.get("vehicle_identifier"),
-                user_id=arguments.get("user_id", 1)
-            )
-
-        else:
-            return {"error": f"Unknown tool: {name}"}
-
+            return database.delete_vehicle(args.get("vehicle_identifier"), args.get("user_id", 1))
+        elif name == "update_vehicle_mileage":
+            return database.update_vehicle_mileage(int(args["vehicle_id"]), int(args["new_mileage"]))
+        elif name == "update_vehicle_service_details":
+            return database.update_vehicle_service_details(int(args["vehicle_id"]), str(args["last_service_date"]), int(args["last_service_mileage"]), args.get("current_mileage"))
+        elif name == "update_service_after_completion":
+            interval = int(args["next_service_interval_km"]) if args.get("next_service_interval_km") else None
+            return database.update_service_after_completion(int(args["vehicle_id"]), str(args["service_date"]), interval, args.get("service_mileage"), args.get("service_type", "Periodic Maintenance Service"))
+        elif name == "update_service_cost":
+            return database.update_service_cost(int(args["vehicle_id"]), float(args["cost"]), args.get("service_history_id"))
+        return {"error": f"Unknown tool: {name}"}
     except Exception as e:
-        return {"error": f"Tool execution failed: {str(e)}"}
+        return {"error": f"Tool execution error: {e}"}
+
+
+def sanitize_api_error(err: Any) -> str:
+    """Format API error messages cleanly without exposing sensitive info."""
+    err_str = str(err)
+    if "429" in err_str or "rate limit" in err_str.lower():
+        return "AI rate limit reached. Please wait a moment and try again."
+    if "401" in err_str or "invalid_api_key" in err_str.lower():
+        return "Authentication error: Invalid GROQ_API_KEY."
+    return re.sub(r"(gsk_[a-zA-Z0-9]+|sk-[a-zA-Z0-9]+)", "[REDACTED]", err_str)
 
 
 class VehicleMaintenanceAgent:
-    """
-    Single AI Agent orchestrating vehicle maintenance workflows.
-    Uses ONLY openai/gpt-oss-120b through Groq.
-    Capped strictly at MAX_TOOL_CALLS (12) iterations.
-    """
+    """Agent that handles vehicle maintenance reasoning using Groq API."""
 
     def __init__(self):
         self.model = GROQ_MODEL
         self.max_tool_calls = MAX_TOOL_CALLS
-        self.api_key = GROQ_API_KEY
         self.client = None
-
-        if self.api_key:
+        if GROQ_API_KEY:
             try:
                 from groq import Groq
-                self.client = Groq(api_key=self.api_key)
+                self.client = Groq(api_key=GROQ_API_KEY)
             except Exception as e:
-                print(f"Notice: Failed to initialize Groq client: {e}")
-                self.client = None
+                print(f"Notice: Groq init error: {e}")
 
     def is_configured(self) -> bool:
-        """Check if Groq client is configured."""
+        """Check if Groq API is ready."""
         return self.client is not None
 
-    def run(self, user_message: str, history: Optional[List[Dict[str, str]]] = None) -> str:
-        """
-        Execute agent reasoning and tool calling loop.
-        Loop limit capped strictly at 12 iterations.
-        """
+    def run(self, user_message: str, history: Optional[List[Dict[str, str]]] = None, selected_vehicle_id: Optional[int] = None) -> str:
+        """Execute reasoning loop capped at 12 tool calls."""
         if not self.is_configured():
-            return (
-                "Groq API is not yet configured. Please set your GROQ_API_KEY in .env "
-                f"to enable live agent reasoning with `{self.model}`."
-            )
+            return f"Please set GROQ_API_KEY in .env to enable the AI assistant with `{self.model}`."
 
-        messages = [{"role": "system", "content": SYSTEM_PROMPT}]
+        # Prepare system prompt with active vehicle context
+        prompt = SYSTEM_PROMPT
+        if selected_vehicle_id:
+            v = database.get_vehicle_by_id(selected_vehicle_id)
+            if v:
+                prompt += f"\nACTIVE VEHICLE IN UI: ID {v['id']}, {v['make']} {v['model']} ({v['registration_number']}), Odometer: {v['current_mileage']} km."
 
-        # Append previous conversation history
+        messages = [{"role": "system", "content": prompt}]
         if history:
             for item in history:
                 messages.append({"role": item["role"], "content": item["content"]})
-
         messages.append({"role": "user", "content": user_message})
 
         tool_calls_count = 0
-
-        # Multi-turn tool execution loop
         while tool_calls_count < self.max_tool_calls:
             try:
-                # Call Groq with exponential backoff on transient errors
-                response = self._call_llm_with_retry(messages)
+                response = self.client.chat.completions.create(model=self.model, messages=messages, tools=TOOL_SCHEMAS, tool_choice="auto")
             except Exception as e:
-                return f"Groq API Error ({self.model}): {str(e)}. No model fallback configured."
+                return f"Groq API Error ({self.model}): {sanitize_api_error(e)}. No model fallback configured."
 
             choice = response.choices[0]
-            message = choice.message
+            msg = choice.message
 
-            # Check if LLM requested tool calls
-            if message.tool_calls:
-                messages.append(message)
-
-                for tool_call in message.tool_calls:
+            # If tool calls were requested, execute them
+            if msg.tool_calls:
+                messages.append(msg)
+                for tc in msg.tool_calls:
                     tool_calls_count += 1
-                    func_name = tool_call.function.name
-
                     try:
-                        args = json.loads(tool_call.function.arguments)
+                        args = json.loads(tc.function.arguments)
                     except json.JSONDecodeError:
                         args = {}
-
-                    # Execute deterministic Python tool
-                    result = execute_tool(func_name, args)
-
-                    messages.append({
-                        "role": "tool",
-                        "tool_call_id": tool_call.id,
-                        "name": func_name,
-                        "content": json.dumps(result)
-                    })
-
-                    # Break early if tool call ceiling reached inside batch
+                    result = execute_tool(tc.function.name, args)
+                    messages.append({"role": "tool", "tool_call_id": tc.id, "name": tc.function.name, "content": json.dumps(result)})
                     if tool_calls_count >= self.max_tool_calls:
                         break
             else:
-                # LLM finished reasoning and returned final natural-language response
-                return message.content or "Workflow completed."
+                return msg.content or "Done."
 
-        return (
-            f"The workflow reached the maximum allowed limit of {self.max_tool_calls} tool calls. "
-            "Please refine your request with specific vehicle or location details."
-        )
-
-    def _call_llm_with_retry(self, messages: List[Dict[str, Any]], max_retries: int = 3) -> Any:
-        """
-        Call Groq API with retries for transient connection errors.
-        CRITICAL RULE: Never switches models. Only retries openai/gpt-oss-120b.
-        """
-        last_exception = None
-        for attempt in range(max_retries):
-            try:
-                return self.client.chat.completions.create(
-                    model=self.model,
-                    messages=messages,
-                    tools=TOOL_SCHEMAS,
-                    tool_choice="auto"
-                )
-            except Exception as e:
-                last_exception = e
-                # Wait with backoff before retrying the SAME model
-                time.sleep(1.0 * (attempt + 1))
-
-        raise last_exception
+        return f"The workflow reached the maximum allowed limit of {self.max_tool_calls} tool calls. Please refine your request with specific vehicle or location details."
 
 
 if __name__ == "__main__":
     agent = VehicleMaintenanceAgent()
-    print("--- AI Agent Initialization Check ---")
-    print(f"Model: {agent.model}")
-    print(f"Configured: {agent.is_configured()}")
-    print(f"Registered Tool Schemas: {len(TOOL_SCHEMAS)}")
-    for t in TOOL_SCHEMAS:
-        print(f"  - {t['function']['name']}")
+    print(f"Agent ready ({agent.model}): {agent.is_configured()}")
