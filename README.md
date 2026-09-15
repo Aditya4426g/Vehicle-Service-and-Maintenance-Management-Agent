@@ -7,7 +7,6 @@
 [![Groq](https://img.shields.io/badge/Groq-openai%2Fgpt--oss--120b-F55036.svg)](https://groq.com/)
 [![PostgreSQL](https://img.shields.io/badge/Supabase-PostgreSQL-3ECF8E.svg)](https://supabase.com/)
 [![OSM](https://img.shields.io/badge/OpenStreetMap-Nominatim%20%26%20Overpass-7EBC6F.svg)](https://www.openstreetmap.org/)
-[![Tests](https://img.shields.io/badge/Pytest-70%20Passed-brightgreen.svg)](https://pytest.org/)
 
 ---
 
@@ -21,10 +20,8 @@
 7. [Repository Structure](#-repository-structure)
 8. [Installation & Setup Guide](#-installation--setup-guide)
 9. [Running the Application](#-running-the-application)
-10. [Automated Test Suite (70 Tests)](#-automated-test-suite-70-tests)
-11. [Live Demonstration Script](#-live-demonstration-script)
-12. [Interview Defense & Technical FAQ](#-interview-defense--technical-faq)
-13. [Team Responsibilities](#-team-responsibilities)
+10. [Technical FAQ & Design Decisions](#-technical-faq--design-decisions)
+11. [License](#-license)
 
 ---
 
@@ -36,8 +33,9 @@ The **Vehicle Service & Maintenance Management Agent** solves this end-to-end:
 - **Predictive Telemetry Monitoring**: Compares real-time odometer readings against manufacturer service schedules.
 - **Strict Deterministic Math**: Categorizes status into `OVERDUE`, `DUE`, `APPROACHING` (within 500 km or 30 days), and `NOT_DUE` in pure Python.
 - **Geographic Workshop Discovery**: Uses OpenStreetMap Nominatim and Overpass API to geocode addresses and identify nearest authorized workshops with Haversine distance ranking.
-- **Atomic Slot Booking**: Verifies real-time availability and prevents double‑booking using composite unique constraints.
-- **Multi‑Channel Dispatch**: Emits standardized notification confirmations via SMS and email with human‑readable booking references (`BK10001`).
+- **Atomic Slot Booking**: Verifies real-time availability and prevents double-booking using composite unique constraints.
+- **Multi-Channel Dispatch**: Emits standardized notification confirmations via SMS and email with human-readable booking references (`BK10001`).
+- **End-to-End Service Lifecycle**: Allows logging completed service records, updating actual maintenance costs, and keeping vehicle mileage in sync.
 
 ---
 
@@ -66,15 +64,14 @@ The **Vehicle Service & Maintenance Management Agent** solves this end-to-end:
 │  - Interval Math          - Nominatim Geocode      - Slot Availability      │
 │  - Date Delta Calculation - OSM Overpass Query     - Collision Check        │
 │  - Strict Priority Rules  - Haversine Distance     - Reference Generation   │
-│                                                                             │
 └─────────────────────────────────────┬───────────────────────────────────────┘
-                                       │
-                                       ▼
-                      ┌─────────────────────────────────────────┐
-                      │       Supabase PostgreSQL Database      │
-                      │  - vehicles, appointments, centers      │
-                      │  - UNIQUE(center, date, time)           │
-                      └─────────────────────────────────────────┘
+                                      │
+                                      ▼
+                     ┌─────────────────────────────────────────┐
+                     │       Supabase PostgreSQL Database      │
+                     │  - vehicles, appointments, centers      │
+                     │  - UNIQUE(center, date, time)           │
+                     └─────────────────────────────────────────┘
 ```
 
 > **Critical Rule**: **Never let an LLM do calendar or mileage arithmetic.** LLMs are probabilistic language models prone to calculation drift. All date differences, kilometer subtractions, threshold checks, and collision queries are executed in deterministic Python functions. The LLM only receives structured JSON outputs and synthesizes empathetic, professional explanations.
@@ -85,12 +82,12 @@ The **Vehicle Service & Maintenance Management Agent** solves this end-to-end:
 
 1. **Single LLM Enforcement**:
    - Exactly **one model** is used across the entire system: **`openai/gpt-oss-120b`** via the Groq API.
-   - Strictly **zero fallback models** (no silent fallbacks to GPT‑4, Claude, Gemini, Llama, or Mistral).
+   - Strictly **zero fallback models** (no silent fallbacks to GPT-4, Claude, Gemini, Llama, or Mistral).
 2. **Hard Loop Ceiling**:
-   - The agent's autonomous tool‑calling loop enforces a strict **12‑iteration ceiling**.
-   - If an edge case or recursive chain attempts a 13th call, execution halts immediately with a user‑friendly diagnostic message.
+   - The agent's autonomous tool-calling loop enforces a strict **12-iteration ceiling**.
+   - If an edge case or recursive chain attempts a 13th call, execution halts immediately with a user-friendly diagnostic message.
 3. **Exponential Backoff**:
-   - Transient network or rate‑limit HTTP errors (429 / 503) retry up to 3 times with exponential backoff ($1\text{s} \to 2\text{s} \to 4\text{s}$).
+   - Transient network or rate-limit HTTP errors (429 / 503) retry up to 3 times with exponential backoff ($1\text{s} \to 2\text{s} \to 4\text{s}$).
 4. **Explicit User Consent for Booking**:
    - Merely asking *"Is my car due for service?"* evaluates status, but will **never** trigger a booking until the user explicitly requests one.
 
@@ -101,16 +98,16 @@ The **Vehicle Service & Maintenance Management Agent** solves this end-to-end:
 ```mermaid
 sequenceDiagram
     autonumber
-    actor User as Rahul Sharma
+    actor User as Vehicle Owner
     participant UI as Streamlit Web App (app.py)
     participant Agent as VehicleMaintenanceAgent (agent.py)
     participant Groq as Groq (openai/gpt-oss-120b)
-    participant DB as PostgreSQL (database.py)
+    participant DB as Supabase PostgreSQL (database.py)
     participant Tools as Python Tools (tools/)
     
-    User->>UI: "Is my Tata Nexon due for service?"
+    User->>UI: "Is my car due for service?"
     UI->>Agent: run(user_message)
-    Agent->>Groq: Chat Completion with 9 Tool Schemas
+    Agent->>Groq: Chat Completion with Tool Schemas
     Groq-->>Agent: tool_call: get_vehicle_info(user_id=1, vehicle_name="Tata Nexon")
     Agent->>DB: get_vehicle_info(1, "Tata Nexon")
     DB-->>Agent: {make: "Tata", model: "Nexon", current_mileage: 9800, last_service_mileage: 5000, ...}
@@ -120,7 +117,7 @@ sequenceDiagram
     Tools-->>Agent: {status: "APPROACHING", remaining_km: 200, days_remaining: 14}
     Agent->>Groq: Tool Result
     Groq-->>Agent: Natural Language Synthesis
-    Agent-->>UI: "Your Tata Nexon has 200 km remaining before its 10,000 km service..."
+    Agent-->>UI: "Your vehicle has 200 km remaining before its 10,000 km service..."
     UI-->>User: Renders response + telemetry cards
 ```
 
@@ -128,14 +125,14 @@ sequenceDiagram
 
 ## 🗄️ Database Schema & Integrity
 
-The PostgreSQL schema ([database/schema.sql](database/schema.sql)) defines 8 relational tables with referential integrity:
+The Supabase PostgreSQL database schema ([database/schema.sql](database/schema.sql)) defines 8 relational tables with referential integrity:
 
 | Table Name | Primary Purpose | Key Constraints |
 |---|---|---|
 | `users` | Owner profile and location | `email UNIQUE`, `phone NOT NULL` |
 | `vehicles` | Telemetry, odometer, and last service info | `registration_number UNIQUE`, `user_id FK` |
 | `maintenance_schedules` | Manufacturer mileage & month intervals | `vehicle_id FK`, `interval_km > 0` |
-| `service_history` | Historical logs of completed services | `vehicle_id FK`, `cost >= 0` |
+| `service_history` | Historical logs of completed services & costs | `vehicle_id FK`, `cost >= 0` |
 | `service_centers` | Authorized dealer workshops | `center_id UNIQUE`, `latitude/longitude` |
 | `appointments` | Booked service slots with references | **`uq_appointment_slot UNIQUE(service_center_id, appointment_date, appointment_time)`** |
 | `notifications` | Audit trail of sent SMS/Email confirmations | `appointment_id FK`, `status CHECK` |
@@ -151,61 +148,51 @@ This PostgreSQL constraint guarantees at the database engine level that two cust
 
 ## 🧰 Tools & Dispatch System
 
-The agent interacts with the world exclusively through 9 typed JSON function schemas dispatched by `execute_tool`:
+The agent interacts with external APIs and the database through typed JSON function schemas dispatched by `execute_tool`:
 
-1. **`get_vehicle_info`**: Retrieves owner's vehicle telemetry.
-2. **`get_service_history`**: Fetches previous repair records and dates.
-3. **`get_maintenance_schedule`**: Retrieves manufacturer interval rules.
-4. **`calculate_service_status`**: Deterministic calculator enforcing:
+1. **`get_vehicle_info`**: Retrieves owner's vehicle telemetry and odometer.
+2. **`get_service_history`**: Fetches previous repair records, service dates, and costs.
+3. **`calculate_service_status`**: Deterministic status calculator enforcing:
    - `OVERDUE`: $\text{remaining\_km} < 0 \lor \text{remaining\_days} < 0$
    - `DUE`: $\text{remaining\_km} = 0 \lor \text{remaining\_days} = 0$
    - `APPROACHING`: $0 < \text{remaining\_km} \le 500 \lor 0 < \text{remaining\_days} \le 30$
    - `NOT_DUE`: Otherwise.
-5. **`geocode_location`**: Resolves address strings to lat/lon using OpenStreetMap Nominatim.
-6. **`search_service_centers`**: Discovers workshops within radius using OSM Overpass API.
-7. **`check_availability`**: Retrieves unbooked time slots for a workshop and date.
-8. **`book_appointment`**: Atomically reserves a slot and generates `BK10001` reference.
-9. **`send_notification`**: Logs and dispatches confirmation messages to SMS and Email.
+4. **`geocode_location`**: Resolves address strings to coordinates using OpenStreetMap Nominatim.
+5. **`search_service_centers`**: Discovers workshops within radius using OSM Overpass API.
+6. **`check_availability`**: Retrieves open, unbooked time slots for a workshop and date.
+7. **`book_appointment`**: Atomically reserves a slot and generates human-readable reference code (`BK10001`).
+8. **`cancel_appointment`**: Cancels active reservations and releases slot availability.
+9. **`send_notification`**: Logs and dispatches confirmation messages via SMS and Email.
+10. **`add_vehicle` / `delete_vehicle`**: Manages garage vehicles for the authenticated user.
+11. **`update_vehicle_mileage`**: Directly records new odometer readings.
+12. **`update_vehicle_service_details`**: Updates last service mileage and date.
+13. **`update_service_after_completion`**: Logs completed maintenance and rolls forward odometer telemetry.
+14. **`update_service_cost`**: Records and saves the actual cost incurred for a service.
 
 ---
 
 ## 📁 Repository Structure
 
 ```
-Project/
-├── app.py                      # Modern 4‑Tab Streamlit Dashboard
-├── agent.py                    # Groq openai/gpt-oss-120b Agent Orchestrator
-├── database.py                 # Supabase PostgreSQL CRUD & Local Seed Store
+Vehicle-Service-and-Maintenance-Management-Agent/
+├── app.py                      # Multi-view Streamlit Dashboard (Assistant, Telemetry, Appointments)
+├── agent.py                    # Groq openai/gpt-oss-120b Agent Orchestrator & Tool Dispatcher
+├── database.py                 # Supabase PostgreSQL Cloud Data Layer & CRUD Operations
 ├── config.py                   # Environment configuration & model constants
-├── demo.py                     # Self‑contained live 7‑step walkthrough script
-├── requirements.txt            # Pinned dependencies
-├── .env.example                # Template for environment variables
+├── requirements.txt            # Production dependencies
+├── .env.example                # Template for environment credentials
 ├── .gitignore                  # Git ignore rules
 │
 ├── database/
 │   ├── schema.sql              # Supabase PostgreSQL DDL (8 tables + constraints)
-│   └── seed.sql                # Rahul Sharma / Tata Nexon demo seed data
+│   └── seed.sql                # Initial schema seed data
 │
-├── tools/
-│   ├── __init__.py
-│   ├── maintenance.py          # Deterministic maintenance status calculator
-│   ├── location.py             # OpenStreetMap Nominatim geocoding & Overpass radius
-│   ├── booking.py              # Slot availability, collision check, reference generator
-│   └── notification.py         # Multi‑channel notification dispatcher & logger
-│
-└── tests/
+└── tools/
     ├── __init__.py
-    ├── test_database_schema.py # Validates schema.sql DDL and seed.sql constraints (5 tests)
-    ├── test_database.py        # Database CRUD, collision checks, updates (9 tests)
-    ├── test_maintenance.py     # Deterministic calculator thresholds & priorities (9 tests)
-    ├── test_location.py        # Geocoding, Overpass queries, Haversine math (8 tests)
-    ├── test_booking.py         # Slot availability, booking refs, collision rejection (7 tests)
-    ├── test_notification.py    # Notification formats, validation, DB logging (5 tests)
-    ├── test_agent.py           # Tool schemas, dispatcher, loop ceiling, backoff (9 tests)
-    ├── test_app.py             # Streamlit AppTest dashboard layout & chat flow (2 tests)
-    ├── test_integration.py     # End‑to‑end component wiring & state transitions (2 tests)
-    ├── test_e2e.py             # Full Rahul/Tata Nexon persona workflow & edge cases (4 tests)
-    └── test_reliability.py     # Network timeouts, corrupt inputs, 10 stress scenarios (10 tests)
+    ├── maintenance.py          # Deterministic maintenance status calculator
+    ├── location.py             # OpenStreetMap Nominatim geocoding & Overpass radius queries
+    ├── booking.py              # Slot availability, collision check, reference generator
+    └── notification.py         # Multi-channel notification dispatcher & logger
 ```
 
 ---
@@ -215,6 +202,7 @@ Project/
 ### 1. Prerequisites
 - **Python 3.10, 3.11, 3.12, or 3.13** installed.
 - Git installed.
+- Supabase project and Groq API key.
 
 ### 2. Clone and Setup Environment
 ```bash
@@ -227,7 +215,7 @@ python -m venv venv
 
 # Activate virtual environment
 # Windows (cmd/powershell):
-.\\venv\\Scripts\\activate
+.\venv\Scripts\activate
 # macOS/Linux:
 source venv/bin/activate
 
@@ -240,15 +228,15 @@ Copy the template file to create `.env`:
 ```bash
 copy .env.example .env
 ```
-Edit `.env` with your API credentials:
+Edit `.env` with your credentials:
 ```env
-# Groq API Configuration (openai/gpt-oss-120b)
+# Groq API Configuration
 GROQ_API_KEY=gsk_your_groq_api_key_here
 GROQ_MODEL=openai/gpt-oss-120b
 
-# Optional: Supabase PostgreSQL (Falls back seamlessly to local seed data if blank)
-SUPABASE_URL=
-SUPABASE_KEY=
+# Supabase PostgreSQL Configuration
+SUPABASE_URL=https://your-project.supabase.co
+SUPABASE_KEY=your-supabase-anon-or-service-key
 
 # OpenStreetMap Nominatim Configuration
 NOMINATIM_USER_AGENT=vehicle_maintenance_agent_v1
@@ -258,64 +246,45 @@ NOMINATIM_USER_AGENT=vehicle_maintenance_agent_v1
 
 ## 🖥️ Running the Application
 
-### Option A: Interactive Streamlit Web App
-Launch the modern 4‑tab automotive dashboard:
+Launch the Streamlit automotive dashboard:
 ```bash
 streamlit run app.py
 ```
 Open your browser at `http://localhost:8501`.
 
-**Features available in the UI**:
-- **Tab 1 (`💬 Agent Assistant`)**: Chat with the agent, ask questions, or click prompt shortcuts.
-- **Tab 2 (`📊 Vehicle Telemetry & History`)**: Real‑time odometer readings, service interval progress bar, and past service logs.
-- **Tab 3 (`🏢 Workshop Directory`)**: Discovered authorized service centers with distance, rating, phone, and 1‑click booking selection.
-- **Tab 4 (`📅 Appointments & Alerts`)**: Active booking cards, reference codes, and sent notification audit logs.
-- **Sidebar**: Quick vehicle specs and a `🔄 Reset Conversation` button.
-
-### Option B: Terminal Live Demo Walkthrough
-Run the automated, self‑contained walkthrough script:
-```bash
-python demo.py
-```
-
----
-
-## 🧪 Automated Test Suite (70 Tests)
-
-The repository features comprehensive automated test coverage across 11 test files.
-
-Run all tests:
-```bash
-python -m pytest tests/ -v
-```
-
-Expected output:
-```text
-============================= test session starts =============================
-collected 70 items
-
-... (output omitted for brevity) ...
-============================= 70 passed in 39.78s =============================
-```
-
-To run a specific test module:
-```bash
-python -m pytest tests/test_maintenance.py -v
-python -m pytest tests/test_reliability.py -v
-```
+### Dashboard Navigation & Views:
+- **💬 Assistant**:
+  - Interactive multi-turn AI assistant with real-time tool calling.
+  - One-click prompt shortcuts (service due check, workshop discovery, appointment booking).
+- **📊 Vehicle Details**:
+  - Real-time odometer telemetry cards, model specs, and service health progress.
+  - **Quick Telemetry Sync**: 3 interactive tabs to update odometer & date, record completed service, or record maintenance cost.
+  - Complete historical service logs table.
+- **📅 Appointments**:
+  - Active booking cards with reference codes (`BK10001`), workshop details, and scheduled dates.
+  - Direct appointment cancellation with real-time slot release.
+  - Audit trail of dispatched SMS and Email notifications.
+- **Sidebar Garage**:
+  - Multi-vehicle selector, vehicle profile switcher, and quick reset.
 
 ---
 
-## 🎯 Live Demonstration Script
+## 💬 Technical FAQ & Design Decisions
 
-The script `demo.py` demonstrates the full user persona without requiring any manual setup:
-1. **Telemetry**: Retrieves Rahul's Tata Nexon ($9,800$ km).
-2. **Maintenance Check**: Calculates status $\to$ `APPROACHING` ($200$ km left before $10,000$ km).
-3. **Workshop Search**: Geocodes Indiranagar, Bangalore and ranks workshops by distance.
-4. **Availability**: Identifies open time slots for tomorrow.
-5. **Booking**: Atomically books `09:00 AM` and generates reference `BK10001`.
-6. **Notification**: Dispatches SMS and Email confirmation logs.
-7. **Collision Rejection**: Deliberately attempts to double‑book the same slot and verifies that the system blocks the collision.
+### Q1: Why use deterministic Python functions instead of letting the LLM calculate intervals?
+> **Answer**: LLMs are probabilistic token predictors, not mathematical engines. Date arithmetic across leap years, month boundaries, and composite priority rules (`OVERDUE` vs `DUE` vs `APPROACHING`) frequently suffers from hallucinations and off-by-one errors. By restricting the LLM strictly to intent recognition and parameter extraction, we guarantee 100% mathematical accuracy and auditability.
+
+### Q2: Why strictly enforce `openai/gpt-oss-120b` without fallback models?
+> **Answer**: In enterprise agentic systems, tool calling schemas, system prompt compliance, and JSON output adherence vary significantly across model architectures. Introducing silent fallbacks to different models risks unexpected schema mismatches and unpredictable tool parameter formatting. We instead harden the single model using exponential backoff retry loops and deterministic validation.
+
+### Q3: How do you prevent double-booking race conditions?
+> **Answer**: At the application layer, `tools/booking.py` checks slot availability before creating an appointment. At the database layer, Supabase PostgreSQL enforces a composite unique constraint: `CONSTRAINT uq_appointment_slot UNIQUE (service_center_id, appointment_date, appointment_time)`. If two simultaneous requests pass the application check, the database engine atomically rejects the second insert with a unique constraint violation.
+
+### Q4: Why OpenStreetMap (Nominatim + Overpass) instead of proprietary APIs?
+> **Answer**: OpenStreetMap offers an open, cost-effective, and transparent geospatial platform without proprietary API keys or restrictive per-query billing. We use Nominatim for geocoding and Overpass API for radius-based automotive POI extraction, augmented by Haversine distance calculations in Python.
+
+### Q5: How does the agent prevent infinite tool-calling loops?
+> **Answer**: `agent.py` tracks the number of tool invocations within a single `run()` request and enforces a hard ceiling of 12 calls. If an edge case or recursive cycle reaches the ceiling, execution breaks cleanly and returns a structured message to the user.
 
 ---
 
